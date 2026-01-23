@@ -34,6 +34,7 @@ from PyQt5.QtWidgets import (
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
 from anylabeling.views.training import UltralyticsDialog
+from anylabeling.services.auto_labeling.types import AutoLabelingMode
 
 from ...app_info import (
     __appname__,
@@ -317,6 +318,8 @@ class LabelingWidget(LabelDialog):
         self.canvas.show_shape.connect(self.show_shape)
         self.canvas.shape_moved.connect(self.set_dirty)
         self.canvas.shape_rotated.connect(self.set_dirty)
+        self.canvas.shape_moved.connect(self._sync_roi_rect_from_canvas)
+        self.canvas.shape_rotated.connect(self._sync_roi_rect_from_canvas)
         self.canvas.selection_changed.connect(self.shape_selection_changed)
         self.canvas.drawing_polygon.connect(self.toggle_drawing_sensitive)
         # [Feature] support for automatically switching to editing mode
@@ -332,6 +335,10 @@ class LabelingWidget(LabelDialog):
         self.canvas.set_cross_line(**self.crosshair_settings)
 
         self._central_widget = scroll_area
+        # ROI 区域自动标注状态（跨图片保留，关闭时清除）
+        self._roi_auto_label_enabled = False
+        self._roi_draw_pending = False
+        self._roi_rect = None  # (x1,y1,x2,y2) in image coords
 
         features = QtWidgets.QDockWidget.DockWidgetFeatures()
         for dock in ["flag_dock", "label_dock", "shape_dock", "file_dock"]:
@@ -1463,14 +1470,6 @@ class LabelingWidget(LabelDialog):
             self.tr("Auto Labeling"),
         )
 
-        auto_labeling_roi = action(
-            self.tr("Auto Label (ROI)"),
-            self.run_auto_labeling_on_selected_roi,
-            None,
-            "brain",
-            self.tr("Run auto labeling only inside selected rectangle ROI"),
-            enabled=False,
-        )
         # Label list context menu.
         label_menu = QtWidgets.QMenu()
         utils.add_actions(
@@ -1595,7 +1594,6 @@ class LabelingWidget(LabelDialog):
             shape_manager=shape_manager,
             loop_thru_labels=loop_thru_labels,
             loop_select_labels=loop_select_labels,
-            auto_labeling_roi=auto_labeling_roi,
             file_menu_actions=(
                 open_,
                 openvideo,
@@ -1671,7 +1669,6 @@ class LabelingWidget(LabelDialog):
                 shape_manager,
                 loop_thru_labels,
                 loop_select_labels,
-                auto_labeling_roi,
             ),
             on_shapes_present=(save_as, delete),
             hide_selected_polygons=hide_selected_polygons,
@@ -1893,7 +1890,6 @@ class LabelingWidget(LabelDialog):
             loop_select_labels,
             run_all_images,
             toggle_auto_labeling_widget,
-            auto_labeling_roi,
             None,
             open_chatbot,
             open_vqa,
@@ -2173,6 +2169,97 @@ class LabelingWidget(LabelDialog):
         self.set_text_editing(False)
 
         QtCore.QTimer.singleShot(100, self.restore_navigator_state)
+
+    def _find_roi_shape_on_canvas(self):
+        """返回当前画布上的 ROI Shape（若不存在则 None）。"""
+        for s in getattr(self.canvas, "shapes", []) or []:
+            if getattr(s, "label", None) == AutoLabelingMode.ROI and getattr(s, "shape_type", None) == "rectangle":
+                return s
+        return None
+
+    def _sync_roi_rect_from_canvas(self, *args, **kwargs):
+        """把当前画布 ROI 框的最新几何信息同步到 self._roi_rect（用于跨图片持久显示/推理）。"""
+        if not getattr(self, "_roi_auto_label_enabled", False):
+            return
+        roi_shape = self._find_roi_shape_on_canvas()
+        if roi_shape is None:
+            return
+        rect = self._roi_rect_from_shape(roi_shape)
+        if rect is not None:
+            self._roi_rect = rect
+
+    def enable_roi_auto_labeling(self, enabled: bool):
+        """AutoLabelingWidget 的 ROI 开关回调。"""
+        self._roi_auto_label_enabled = bool(enabled)
+        if self._roi_auto_label_enabled:
+            self._roi_draw_pending = True
+            self.status(self.tr("区域自动标注已开启：请在图像上绘制一个ROI矩形框。"), 4000)
+            # 进入矩形绘制模式（不要影响当前 auto-labeling 状态）
+            self.toggle_draw_mode(
+                edit=False, create_mode="rectangle", disable_auto_labeling=False
+            )
+        else:
+            self._roi_draw_pending = False
+            self._roi_rect = None
+            self._remove_roi_shape()
+            self.status(self.tr("区域自动标注已关闭：将恢复全图自动标注。"), 3000)
+
+    def get_roi_for_auto_labeling(self):
+        """给模型推理用的 ROI（未设置则返回 None）。"""
+        if not self._roi_auto_label_enabled:
+            return None
+        return self._roi_rect
+
+    def _roi_rect_from_shape(self, shape):
+        pts = getattr(shape, "points", None) or []
+        xs = [p.x() for p in pts]
+        ys = [p.y() for p in pts]
+        if not xs or not ys:
+            return None
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def _remove_roi_shape(self):
+        """从 canvas 中移除 ROI 临时框（不影响真实标注）。"""
+        shapes = getattr(self.canvas, "shapes", []) or []
+        kept = [s for s in shapes if getattr(s, "label", None) != AutoLabelingMode.ROI]
+        if len(kept) != len(shapes):
+            self.canvas.load_shapes(kept, replace=True)
+            self.canvas.update()
+
+    def _ensure_roi_shape_visible(self):
+        """切换图片后把 ROI 框重新加回画布（仅显示，不写入 label_list）。"""
+        if not self._roi_auto_label_enabled or not self._roi_rect:
+            return
+
+        # 先清掉旧的 ROI 形状（避免重复）
+        self._remove_roi_shape()
+
+        x1, y1, x2, y2 = self._roi_rect
+        # clamp to current image
+        iw = self.image.width() if hasattr(self, "image") else 0
+        ih = self.image.height() if hasattr(self, "image") else 0
+        if iw <= 0 or ih <= 0:
+            return
+        x1 = max(0.0, min(float(x1), float(iw - 1)))
+        y1 = max(0.0, min(float(y1), float(ih - 1)))
+        x2 = max(0.0, min(float(x2), float(iw)))
+        y2 = max(0.0, min(float(y2), float(ih)))
+        if (x2 - x1) < 2 or (y2 - y1) < 2:
+            return
+
+        roi_shape = Shape(flags={})
+        roi_shape.shape_type = "rectangle"
+        roi_shape.closed = True
+        roi_shape.label = AutoLabelingMode.ROI
+        roi_shape.selected = False
+        roi_shape.add_point(QtCore.QPointF(x1, y1))
+        roi_shape.add_point(QtCore.QPointF(x2, y1))
+        roi_shape.add_point(QtCore.QPointF(x2, y2))
+        roi_shape.add_point(QtCore.QPointF(x1, y2))
+
+        # 只加到 canvas，不加到 label_list（避免污染标注列表）
+        self.canvas.load_shapes((self.canvas.shapes or []) + [roi_shape], replace=True)
+        self.canvas.update()
 
     def _get_selected_rectangle_roi(self):
         shapes = getattr(self.canvas, "selected_shapes", None) or []
@@ -2544,6 +2631,7 @@ class LabelingWidget(LabelDialog):
             AutoLabelingMode.OBJECT,
             AutoLabelingMode.ADD,
             AutoLabelingMode.REMOVE,
+            AutoLabelingMode.ROI,
         ]:
             return text
 
@@ -3638,6 +3726,7 @@ class LabelingWidget(LabelDialog):
                 AutoLabelingMode.OBJECT,
                 AutoLabelingMode.ADD,
                 AutoLabelingMode.REMOVE,
+                AutoLabelingMode.ROI,
             ]
         ]
         flags = {}
@@ -3908,6 +3997,7 @@ class LabelingWidget(LabelDialog):
                 AutoLabelingMode.OBJECT,
                 AutoLabelingMode.ADD,
                 AutoLabelingMode.REMOVE,
+                AutoLabelingMode.ROI,
             ]
         ]
         flags = {}
@@ -4057,6 +4147,37 @@ class LabelingWidget(LabelDialog):
 
         position MUST be in global coordinates.
         """
+        if getattr(self, "_roi_draw_pending", False):
+            if getattr(self.canvas, "shapes", None):
+                shape = self.canvas.shapes[-1]
+            else:
+                shape = None
+
+            if shape is not None and getattr(shape, "shape_type", None) == "rectangle":
+                # 删除旧 ROI（如果有）
+                self._remove_roi_shape()
+
+                # 标记为 ROI
+                shape.label = AutoLabelingMode.ROI
+                shape.flags = {}
+                shape.group_id = None
+                shape.description = ""
+                shape.difficult = False
+
+                rect = self._roi_rect_from_shape(shape)
+                if rect is not None:
+                    self._roi_rect = rect
+
+                self._roi_draw_pending = False
+                self.status(self.tr("ROI 已设置。按 Run(I) 仅对该区域自动标注。"), 3000)
+
+                # 退出绘制模式（不要清 auto-labeling 状态）
+                self.toggle_draw_mode(edit=True, disable_auto_labeling=False)
+
+                # ROI 只显示在 canvas，不加入 label_list
+                self._ensure_roi_shape_visible()
+                return
+            
         items = self.unique_label_list.selectedItems()
         text = None
         if items:
@@ -4603,6 +4724,8 @@ class LabelingWidget(LabelDialog):
         # self.clear_auto_labeling_marks()
         # self.inform_next_files(filename)
 
+        self._sync_roi_rect_from_canvas()
+
         # Changing file_list_widget loads file
         if filename in self.image_list and (
             self.file_list_widget.currentRow()
@@ -4748,6 +4871,7 @@ class LabelingWidget(LabelDialog):
             self.update_progress_title()
         else:
             self.set_clean()
+        self._ensure_roi_shape_visible()
         self.canvas.setEnabled(True)
         # keep_prev_scale=True：无论是否首次加载/是否有 per-file 记录，都按“上一张图”的缩放+滚动显示
         if self._config.get("keep_prev_scale", False) and self._prev_view_state:
@@ -5484,10 +5608,70 @@ class LabelingWidget(LabelDialog):
             self.actions.run_all_images.setEnabled(True)
         self.update_thumbnail_display()
 
+    def _shape_bbox_xyxy(self, shape):
+        pts = getattr(shape, "points", None) or []
+        if not pts:
+            return None
+        xs = [p.x() for p in pts]
+        ys = [p.y() for p in pts]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    @staticmethod
+    def _bbox_intersects_roi(bbox_xyxy, roi_xyxy):
+        x1, y1, x2, y2 = bbox_xyxy
+        rx1, ry1, rx2, ry2 = roi_xyxy
+        return (x1 < rx2) and (x2 > rx1) and (y1 < ry2) and (y2 > ry1)
+    
     @pyqtSlot()
     def new_shapes_from_auto_labeling(self, auto_labeling_result):
         """Apply auto labeling results to the current image."""
         if not self.image or not self.image_path:
+            return
+
+        roi = self.get_roi_for_auto_labeling()
+        roi_active = bool(self._roi_auto_label_enabled and roi)
+
+        # Replace=True 且 ROI 开启：只覆盖 ROI 内的旧标注
+        if auto_labeling_result.replace and roi_active:
+            # 取出当前“真实标注”(排除自动标注临时框/ROI框)
+            existing_real_shapes = [
+                s
+                for s in (getattr(self.canvas, "shapes", []) or [])
+                if getattr(s, "label", None)
+                not in [
+                    AutoLabelingMode.OBJECT,
+                    AutoLabelingMode.ADD,
+                    AutoLabelingMode.REMOVE,
+                    AutoLabelingMode.ROI,
+                ]
+            ]
+
+            kept_outside = []
+            for s in existing_real_shapes:
+                bb = self._shape_bbox_xyxy(s)
+                # 没法算 bbox 的形状：保守起见保留
+                if bb is None or not self._bbox_intersects_roi(bb, roi):
+                    kept_outside.append(s)
+
+            merged_shapes = kept_outside + (auto_labeling_result.shapes or [])
+
+            # 彻底重载：仅用“ROI外旧标注 + ROI内新结果”
+            self.label_list.clear()
+            self.canvas.load_shapes([], replace=True)
+            self.load_shapes(merged_shapes, replace=True, update_last_label=False)
+
+            # ROI 框需要一直显示
+            self._ensure_roi_shape_visible()
+
+            # description（保持原逻辑）
+            if getattr(auto_labeling_result, "description", None):
+                description = auto_labeling_result.description
+                self.shape_text_label.setText(self.tr("Image Description"))
+                self.shape_text_edit.setPlainText(description)
+                self.other_data["description"] = description
+                self.shape_text_edit.setDisabled(False)
+
+            self.set_dirty()
             return
 
         # Clear existing shapes
@@ -5503,6 +5687,7 @@ class LabelingWidget(LabelDialog):
                     self.label_list.remove_item(item)
             self.load_shapes(auto_labeling_result.shapes, replace=False)
 
+        self._ensure_roi_shape_visible()
         # Set image description
         if auto_labeling_result.description:
             description = auto_labeling_result.description

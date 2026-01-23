@@ -405,6 +405,20 @@
        </property>
       </widget>
      </item>
+          <!-- 新增：ROI 区域自动标注开关按钮 -->
+     <item>
+      <widget class="QPushButton" name="button_roi_auto_label">
+       <property name="text">
+        <string>区域自动标注（关闭）</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
      <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">

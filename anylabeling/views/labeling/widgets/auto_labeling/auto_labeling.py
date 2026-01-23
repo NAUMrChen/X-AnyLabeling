@@ -150,6 +150,9 @@ class AutoLabelingWidget(QWidget):
             self.florence2_select_combobox.setEnabled(enable)
             self.remote_server_select_combobox.setEnabled(enable)
             self.remote_task_select_combobox.setEnabled(enable)
+            # 新增
+            if hasattr(self, "button_roi_auto_label"):
+                self.button_roi_auto_label.setEnabled(enable)
 
         self.model_manager.prediction_started.connect(
             lambda: set_enable_tools(False)
@@ -184,6 +187,18 @@ class AutoLabelingWidget(QWidget):
         # --- Configuration for: button_reset_tracker ---
         self.button_reset_tracker.setStyleSheet(get_normal_button_style())
         self.button_reset_tracker.clicked.connect(self.on_reset_tracker)
+
+        # 新增：ROI 区域自动标注按钮
+        if hasattr(self, "button_roi_auto_label"):
+            self.button_roi_auto_label.setStyleSheet(get_normal_button_style())
+            self.button_roi_auto_label.setToolTip(
+                self.tr("开启后在图像上绘制一个ROI矩形框；Run(I)将仅在ROI内自动标注。")
+            )
+            self.button_roi_auto_label.toggled.connect(
+                self.on_roi_auto_label_toggled
+            )
+            # 初始化文案
+            self.on_roi_auto_label_toggled(self.button_roi_auto_label.isChecked())
 
         # --- Configuration for: button_set_api_token ---
         self.button_set_api_token.setStyleSheet(get_normal_button_style())
@@ -349,6 +364,71 @@ class AutoLabelingWidget(QWidget):
         self.populate_florence2_combobox()
         self.populate_gd_combobox()
         self.populate_remote_server_combobox()
+
+    def on_roi_auto_label_toggled(self, checked: bool):
+        """ROI 自动标注开关：开启->引导绘制ROI；关闭->清除ROI并恢复全图推理。"""
+        if not hasattr(self, "button_roi_auto_label"):
+            return
+
+        self.button_roi_auto_label.setText(
+            self.tr("区域自动标注（开启）") if checked else self.tr("区域自动标注（关闭）")
+        )
+        self.button_roi_auto_label.setStyleSheet(
+            get_toggle_button_style(button_color="#90EE90")
+            if checked
+            else get_normal_button_style()
+        )
+
+        if hasattr(self.parent, "enable_roi_auto_labeling"):
+            self.parent.enable_roi_auto_labeling(checked)
+
+    def run_prediction(self):
+        """Run prediction（支持 ROI 模式：仍使用 Run(I)）"""
+        if self.parent.filename is None:
+            return
+
+        roi = None
+        if hasattr(self, "button_roi_auto_label") and self.button_roi_auto_label.isChecked():
+            if hasattr(self.parent, "get_roi_for_auto_labeling"):
+                roi = self.parent.get_roi_for_auto_labeling()
+            if roi is None:
+                self.model_manager.new_model_status.emit(
+                    self.tr("请先绘制一个ROI矩形框（区域自动标注已开启）。")
+                )
+                return
+
+        if (
+            self.button_skip_detection.isChecked()
+            and self.parent.canvas.shapes
+            and self.model_manager.loaded_model_config["type"] in _SKIP_DET_MODELS
+        ):
+            existing_shapes = self._extract_shapes_for_recognition()
+            if existing_shapes is not None:
+                self.model_manager.predict_shapes_threading(
+                    self.parent.image,
+                    self.parent.filename,
+                    existing_shapes=existing_shapes,
+                    roi=roi,
+                )
+                return
+
+        self.model_manager.predict_shapes_threading(
+            self.parent.image,
+            self.parent.filename,
+            roi=roi,
+        )
+
+    def hide_labeling_widgets(self):
+        """Hide labeling widgets by default"""
+        widgets = [
+            # ...existing code...
+            "button_reset_tracker",
+            # 新增
+            "button_roi_auto_label",
+            # ...existing code...
+        ]
+        for widget in widgets:
+            getattr(self, widget).hide()
 
     def init_model_data(self):
         """Get models data"""
@@ -709,28 +789,6 @@ class AutoLabelingWidget(QWidget):
         else:
             self.auto_labeling_mode = AutoLabelingMode(edit_mode, shape_type)
         self.auto_labeling_mode_changed.emit(self.auto_labeling_mode)
-
-    def run_prediction(self):
-        """Run prediction"""
-        if self.parent.filename is not None:
-            if (
-                self.button_skip_detection.isChecked()
-                and self.parent.canvas.shapes
-                and self.model_manager.loaded_model_config["type"]
-                in _SKIP_DET_MODELS
-            ):
-                existing_shapes = self._extract_shapes_for_recognition()
-                if existing_shapes is not None:
-                    self.model_manager.predict_shapes_threading(
-                        self.parent.image,
-                        self.parent.filename,
-                        existing_shapes=existing_shapes,
-                    )
-                    return
-
-            self.model_manager.predict_shapes_threading(
-                self.parent.image, self.parent.filename
-            )
 
     def run_vl_prediction(self):
         """Run visual-language prediction"""
@@ -1410,9 +1468,18 @@ class AutoLabelingWidget(QWidget):
         self.skip_detection = is_checked
 
     def _extract_shapes_for_recognition(self):
-        """Extract shapes for text recognition"""
+        """Extract shapes for text recognition（跳过 ROI 临时框）"""
         shapes_for_recognition = []
         for shape in self.parent.canvas.shapes:
+            # ✅ 过滤 ROI 临时框/特殊框，避免被当成 det boxes
+            if getattr(shape, "label", None) in [
+                AutoLabelingMode.ROI,
+                AutoLabelingMode.OBJECT,
+                AutoLabelingMode.ADD,
+                AutoLabelingMode.REMOVE,
+            ]:
+                continue
+
             if shape.shape_type in ["rectangle", "rotation", "polygon"]:
                 shapes_for_recognition.append(shape)
             else:

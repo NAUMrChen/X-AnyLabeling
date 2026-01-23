@@ -21,7 +21,8 @@ class AutoLabelingMode:
     REMOVE = "AUTOLABEL_REMOVE"
     POINT = "point"
     RECTANGLE = "rectangle"
-
+    ROI = "AUTOLABEL_ROI"
+    
     def __init__(self, edit_mode, shape_type):
         """Initialize AutoLabelingMode
 
