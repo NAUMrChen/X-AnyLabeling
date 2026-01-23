@@ -1463,6 +1463,14 @@ class LabelingWidget(LabelDialog):
             self.tr("Auto Labeling"),
         )
 
+        auto_labeling_roi = action(
+            self.tr("Auto Label (ROI)"),
+            self.run_auto_labeling_on_selected_roi,
+            None,
+            "brain",
+            self.tr("Run auto labeling only inside selected rectangle ROI"),
+            enabled=False,
+        )
         # Label list context menu.
         label_menu = QtWidgets.QMenu()
         utils.add_actions(
@@ -1587,6 +1595,7 @@ class LabelingWidget(LabelDialog):
             shape_manager=shape_manager,
             loop_thru_labels=loop_thru_labels,
             loop_select_labels=loop_select_labels,
+            auto_labeling_roi=auto_labeling_roi,
             file_menu_actions=(
                 open_,
                 openvideo,
@@ -1662,6 +1671,7 @@ class LabelingWidget(LabelDialog):
                 shape_manager,
                 loop_thru_labels,
                 loop_select_labels,
+                auto_labeling_roi,
             ),
             on_shapes_present=(save_as, delete),
             hide_selected_polygons=hide_selected_polygons,
@@ -1883,6 +1893,7 @@ class LabelingWidget(LabelDialog):
             loop_select_labels,
             run_all_images,
             toggle_auto_labeling_widget,
+            auto_labeling_roi,
             None,
             open_chatbot,
             open_vqa,
@@ -2163,6 +2174,38 @@ class LabelingWidget(LabelDialog):
 
         QtCore.QTimer.singleShot(100, self.restore_navigator_state)
 
+    def _get_selected_rectangle_roi(self):
+        shapes = getattr(self.canvas, "selected_shapes", None) or []
+        if len(shapes) != 1:
+            return None
+        s = shapes[0]
+        if getattr(s, "shape_type", None) != "rectangle":
+            return None
+        pts = getattr(s, "points", None) or []
+        if len(pts) < 2:
+            return None
+        xs = [p.x() for p in pts]
+        ys = [p.y() for p in pts]
+        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+        return (x1, y1, x2, y2)
+
+    def run_auto_labeling_on_selected_roi(self):
+        """只对当前选中的矩形区域执行一次自动标注（含 tracker 编号）。"""
+        roi = self._get_selected_rectangle_roi()
+        if roi is None:
+            self.status(self.tr("Please select exactly one rectangle as ROI."), 3000)
+            return
+
+        if not hasattr(self, "auto_labeling_widget") or not hasattr(self.auto_labeling_widget, "model_manager"):
+            self.status(self.tr("Auto labeling model manager is not available."), 3000)
+            return
+
+        self.auto_labeling_widget.model_manager.predict_shapes_threading(
+            self.image,
+            self.image_path,
+            roi=roi,
+        )
+        
     def _capture_view_state_for_keep_prev_scale(self):
         """捕获当前图片的视图状态（缩放倍数 + 滚动位置比例）。"""
         try:

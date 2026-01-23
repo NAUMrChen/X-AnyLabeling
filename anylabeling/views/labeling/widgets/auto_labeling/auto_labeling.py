@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
     QWidget,
+    QPushButton,
 )
 
 from anylabeling.services.auto_labeling.model_manager import ModelManager

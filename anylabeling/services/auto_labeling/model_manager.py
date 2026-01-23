@@ -79,8 +79,8 @@ class ModelManager(QObject):
         text_prompt=None,
         run_tracker=False,
         existing_shapes=None,
+        roi=None,
     ):
-        # 关键：让 VS Code 调试器跟踪这个 QThread
         self._debugpy_enable_for_current_thread()
         return self.predict_shapes(
             image,
@@ -88,6 +88,7 @@ class ModelManager(QObject):
             text_prompt=text_prompt,
             run_tracker=run_tracker,
             existing_shapes=existing_shapes,
+            roi=roi,
         )
     
     def load_model_configs(self):
@@ -2116,11 +2117,9 @@ class ModelManager(QObject):
         run_tracker=False,
         batch=False,
         existing_shapes=None,
+        roi=None,
     ):
-        """Predict shapes.
-        NOTE: This function is blocking. The model can take a long time to
-        predict. So it is recommended to use predict_shapes_threading instead.
-        """
+        """Predict shapes (blocking)."""
         if self.loaded_model_config is None:
             self.new_model_status.emit(
                 self.tr("Model is not loaded. Choose a mode to continue.")
@@ -2128,25 +2127,35 @@ class ModelManager(QObject):
             self.prediction_finished.emit()
             return
 
+        model = self.loaded_model_config["model"]
+
+        def _call_with_optional_roi(**kwargs):
+            # 兼容老模型：不支持 roi 时自动去掉
+            try:
+                return model.predict_shapes(image, filename, **kwargs)
+            except TypeError as e:
+                msg = str(e)
+                if "unexpected keyword argument" in msg and "'roi'" in msg and "roi" in kwargs:
+                    kwargs.pop("roi", None)
+                    return model.predict_shapes(image, filename, **kwargs)
+                raise
+
         try:
+            kwargs = {}
+            if roi is not None:
+                kwargs["roi"] = roi
+
             if text_prompt is not None:
-                auto_labeling_result = self.loaded_model_config[
-                    "model"
-                ].predict_shapes(image, filename, text_prompt=text_prompt)
+                kwargs["text_prompt"] = text_prompt
+                auto_labeling_result = _call_with_optional_roi(**kwargs)
             elif run_tracker is True:
-                auto_labeling_result = self.loaded_model_config[
-                    "model"
-                ].predict_shapes(image, filename, run_tracker=run_tracker)
+                kwargs["run_tracker"] = run_tracker
+                auto_labeling_result = _call_with_optional_roi(**kwargs)
             elif existing_shapes is not None:
-                auto_labeling_result = self.loaded_model_config[
-                    "model"
-                ].predict_shapes(
-                    image, filename, existing_shapes=existing_shapes
-                )
+                kwargs["existing_shapes"] = existing_shapes
+                auto_labeling_result = _call_with_optional_roi(**kwargs)
             else:
-                auto_labeling_result = self.loaded_model_config[
-                    "model"
-                ].predict_shapes(image, filename)
+                auto_labeling_result = _call_with_optional_roi(**kwargs)
 
             if batch:
                 return auto_labeling_result
@@ -2173,10 +2182,9 @@ class ModelManager(QObject):
         text_prompt=None,
         run_tracker=False,
         existing_shapes=None,
+        roi=None,
     ):
-        """Predict shapes.
-        This function starts a thread to run the prediction.
-        """
+        """Predict shapes in a thread."""
         if self.loaded_model_config is None:
             self.new_model_status.emit(
                 self.tr("Model is not loaded. Choose a mode to continue.")
@@ -2208,6 +2216,7 @@ class ModelManager(QObject):
                     image,
                     filename,
                     text_prompt=text_prompt,
+                    roi=roi,
                 )
             elif run_tracker is True:
                 self.model_execution_worker = GenericWorker(
@@ -2215,6 +2224,7 @@ class ModelManager(QObject):
                     image,
                     filename,
                     run_tracker=run_tracker,
+                    roi=roi,
                 )
             elif existing_shapes is not None:
                 self.model_execution_worker = GenericWorker(
@@ -2222,10 +2232,14 @@ class ModelManager(QObject):
                     image,
                     filename,
                     existing_shapes=existing_shapes,
+                    roi=roi,
                 )
             else:
                 self.model_execution_worker = GenericWorker(
-                    self._predict_shapes_entry, image, filename
+                    self._predict_shapes_entry,
+                    image,
+                    filename,
+                    roi=roi,
                 )
             self.model_execution_worker.finished.connect(
                 self.model_execution_thread.quit

@@ -203,6 +203,29 @@ class YOLO(Model):
         if isinstance(self.classes, dict):
             self.classes = list(self.classes.values())
 
+    @staticmethod
+    def _sanitize_roi(roi, img_w: int, img_h: int):
+        if roi is None:
+            return None
+        try:
+            x1, y1, x2, y2 = [int(round(float(v))) for v in roi]
+        except Exception:
+            return None
+
+        if x2 < x1:
+            x1, x2 = x2, x1
+        if y2 < y1:
+            y1, y2 = y2, y1
+
+        x1 = max(0, min(x1, img_w - 1))
+        y1 = max(0, min(y1, img_h - 1))
+        x2 = max(0, min(x2, img_w))
+        y2 = max(0, min(y2, img_h))
+
+        if (x2 - x1) < 2 or (y2 - y1) < 2:
+            return None
+        return (x1, y1, x2, y2)
+
     def set_auto_labeling_conf(self, value):
         """set auto labeling confidence threshold"""
         if value > 0:
@@ -386,7 +409,7 @@ class YOLO(Model):
             clas = pred[:, 5:6]
         return (bbox, clas, conf, masks, keypoints)
 
-    def predict_shapes(self, image, image_path=None):
+    def predict_shapes(self, image, image_path=None, roi=None):
         """
         Predict shapes from image
         """
@@ -400,22 +423,60 @@ class YOLO(Model):
             logger.warning("Could not inference model")
             logger.warning(e)
             return []
-        self.image_shape = image.shape
-        if self.model_type == "u_rtdetr":
-            blob = self.preprocess_rtdetr(image)
+        
+        full_h, full_w = image.shape[:2]
+        roi = self._sanitize_roi(roi, full_w, full_h)
+        if roi is not None:
+            rx1, ry1, rx2, ry2 = roi
+            infer_img = image[ry1:ry2, rx1:rx2]
+            offset_x, offset_y = rx1, ry1
         else:
-            blob = self.preprocess(image, upsample_mode="letterbox")
+            infer_img = image
+            offset_x, offset_y = 0, 0
+        self.image_shape = infer_img.shape
+
+        if self.model_type == "u_rtdetr":
+            blob = self.preprocess_rtdetr(infer_img)
+        else:
+            blob = self.preprocess(infer_img, upsample_mode="letterbox")
         outputs = self.inference(blob)
         boxes, class_ids, scores, masks, keypoints = self.postprocess(outputs)
+
+        # 将 ROI 内坐标回填到整图坐标
+        if roi is not None and len(boxes) > 0:
+            if self.task == "obb":
+                # xywhr: only offset center x/y
+                boxes = boxes.copy()
+                boxes[:, 0] += offset_x
+                boxes[:, 1] += offset_y
+            else:
+                boxes = boxes.copy()
+                boxes[:, [0, 2]] += offset_x
+                boxes[:, [1, 3]] += offset_y
 
         points = [[] for _ in range(len(boxes))]
         if self.task == "seg" and masks is not None:
             points = [
-                scale_coords(self.input_shape, x, image.shape, normalize=False)
+                scale_coords(self.input_shape, x, infer_img.shape, normalize=False)
                 for x in masks2segments(masks, self.epsilon_factor)
             ]
+            if roi is not None:
+                points = [
+                    (p + np.array([offset_x, offset_y], dtype=p.dtype)) if len(p) else p
+                    for p in points
+                ]
+
+        if keypoints is None:
+            keypoints = [[] for _ in range(len(boxes))]
+        elif roi is not None and self.task == "pose" and len(keypoints) > 0:
+            # keypoints: [N, K, 2/3]
+            keypoints = np.array(keypoints, dtype=np.float32, copy=True)
+            keypoints[..., 0] += offset_x
+            keypoints[..., 1] += offset_y
+
         track_ids = [[] for _ in range(len(boxes))]
         if self.tracker is not None and (len(boxes) > 0):
+            # tracker 用整图做外观特征，但 box 坐标已是整图坐标
             if self.task == "obb":
                 tracks = self.tracker.update(
                     scores.flatten(), boxes, class_ids.flatten(), image
@@ -438,8 +499,6 @@ class YOLO(Model):
                 class_ids = (
                     tracks[:, 7:8] if self.task == "obb" else tracks[:, 6:7]
                 )
-        if keypoints is None:
-            keypoints = [[] for _ in range(len(boxes))]
 
         shapes = []
         for i, (box, class_id, score, point, keypoint, track_id) in enumerate(
