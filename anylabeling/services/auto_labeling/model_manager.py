@@ -58,6 +58,38 @@ class ModelManager(QObject):
 
         self.load_model_configs()
 
+    @staticmethod
+    def _debugpy_enable_for_current_thread():
+        try:
+            import debugpy
+            if debugpy.is_client_connected():
+                debugpy.debug_this_thread()
+        except Exception:
+            pass
+
+    def _load_model_entry(self, model_id):
+        # 关键：让 VS Code 调试器跟踪这个 QThread
+        self._debugpy_enable_for_current_thread()
+        return self._load_model(model_id)
+    
+    def _predict_shapes_entry(
+        self,
+        image,
+        filename=None,
+        text_prompt=None,
+        run_tracker=False,
+        existing_shapes=None,
+    ):
+        # 关键：让 VS Code 调试器跟踪这个 QThread
+        self._debugpy_enable_for_current_thread()
+        return self.predict_shapes(
+            image,
+            filename,
+            text_prompt=text_prompt,
+            run_tracker=run_tracker,
+            existing_shapes=existing_shapes,
+        )
+    
     def load_model_configs(self):
         """Load model configs"""
         # Load list of default models
@@ -319,7 +351,7 @@ class ModelManager(QObject):
         )
         self.new_model_status.emit(message)
 
-        self.model_download_worker = GenericWorker(self._load_model, model_id)
+        self.model_download_worker = GenericWorker(self._load_model_entry, model_id)
         self.model_download_worker.finished.connect(
             self.on_model_download_finished
         )
@@ -485,6 +517,26 @@ class ModelManager(QObject):
 
             try:
                 model_config["model"] = YOLOv10(
+                    model_config, on_message=self.new_model_status.emit
+                )
+                self.auto_segmentation_model_unselected.emit()
+                logger.info(
+                    f"✅ Model loaded successfully: {model_config['type']}"
+                )
+            except Exception as e:  # noqa
+                template = "Error in loading model: {error_message}"
+                translated_template = self.tr(template)
+                error_text = translated_template.format(error_message=str(e))
+                self.new_model_status.emit(error_text)
+                logger.error(
+                    f"❌ Error in loading model: {model_config['type']} with error: {str(e)}"
+                )
+                return
+        elif model_config["type"] == "yolo26":
+            from .yolo26 import YOLO26
+
+            try:
+                model_config["model"] = YOLO26(
                     model_config, on_message=self.new_model_status.emit
                 )
                 self.auto_segmentation_model_unselected.emit()
@@ -2173,7 +2225,7 @@ class ModelManager(QObject):
                 )
             else:
                 self.model_execution_worker = GenericWorker(
-                    self.predict_shapes, image, filename
+                    self._predict_shapes_entry, image, filename
                 )
             self.model_execution_worker.finished.connect(
                 self.model_execution_thread.quit

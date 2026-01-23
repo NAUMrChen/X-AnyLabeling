@@ -1,0 +1,158 @@
+@startuml
+title X-AnyLabeling 启动/打开文件主时序（GUI主路径 + CLI分支）
+autonumber
+skinparam responseMessageBelowArrow true
+
+actor User
+participant "CLI(xanylabeling)" as CLI
+participant "anylabeling.app:main()" as Main
+participant "argparse" as Arg
+participant "anylabeling.config" as Cfg
+participant "PyQt5资源(anylabeling.resources)" as QRes
+participant "QTranslator" as Tr
+participant "QApplication" as QApp
+participant "MainWindow" as MW
+participant "LabelingWrapper" as LW
+participant "LabelingWidget" as LWidget
+participant "QSettings" as QSet
+participant "QTimer" as QT
+participant "LabelFile" as LFile
+participant "Canvas" as Canvas
+participant "update_checker.check_for_updates_async" as Upd
+participant "GitHub Releases API" as GH
+
+== 命令行入口 ==
+User -> CLI: 运行 `xanylabeling [args]`
+CLI -> Main: main()
+
+Main -> Main: 过滤 argv 中的 parent_pid=...
+Main -> Arg: 解析 subcommands + GUI 参数
+
+alt args.command in {help/checks/version/config/convert}
+  Main -> Main: dispatch special[command](args)
+  alt help
+    Main -> CLI: print(CLI_HELP_MSG)
+  else checks
+    Main -> Main: import anylabeling.views.common.checks
+    Main -> Main: run_checks()
+  else version
+    Main -> CLI: print(__version__)
+  else config
+    Main -> CLI: print(~/.xanylabelingrc)
+  else convert
+    Main -> Main: import anylabeling.views.common.converter
+    Main -> Main: handle_convert_command(args)
+  end
+  Main --> CLI: return (进程退出)
+else 进入 GUI 模式
+  == 日志/平台环境 ==
+  Main -> Main: 设置 logger level
+  opt --qt-platform 指定
+    Main -> Main: os.environ["QT_QPA_PLATFORM"]=qt_platform
+  end
+
+  == 配置加载 ==
+  Main -> Cfg: anylabeling_config.current_config_file = config_file_or_yaml
+  Main -> Cfg: get_config(config_file_or_yaml, config_from_args, show_msg=True)
+  Cfg -> Cfg: get_default_config()\n- 如存在 ~/.anylabelingrc 且无 ~/.xanylabelingrc: 迁移复制\n- 从 anylabeling/configs/xanylabeling_config.yaml 读默认配置\n- 如无 ~/.xanylabelingrc: 写入默认配置
+  Cfg -> Cfg: yaml.safe_load(config_file_or_yaml)\n(若不是 dict，则当作文件路径读取)
+  Cfg -> Cfg: update_dict(default, yaml_config, validate_config_item)
+  Cfg -> Cfg: update_dict(config, cli_args, validate_config_item)
+  Cfg --> Main: config(dict)
+
+  alt config["labels"]为空 且 validate_label启用
+    Main -> Main: logger.error(...)
+    Main -> CLI: sys.exit(1)
+  end
+
+  == 翻译/资源/Qt应用初始化 ==
+  Main -> QRes: import (注册 Qt 资源：:/languages/...、:/images/... 等)
+  Main -> Tr: translator.load(":/languages/translations/{language}.qm")
+  Main -> QApp: setAttribute(高DPI相关)
+  Main -> QApp: app = QApplication(sys.argv)
+  Main -> QApp: app.processEvents()
+  Main -> QApp: setApplicationName/Version\nsetWindowIcon(new_icon("icon"))
+  alt 翻译加载成功
+    Main -> QApp: installTranslator(translator)
+  else 失败
+    Main -> Main: logger.warning(...)
+  end
+
+  == 主窗体构建 ==
+  Main -> MW: MainWindow(app, config, filename, output_file, output_dir)
+  MW -> LW: LabelingWrapper(parent=MW,...)
+  LW -> LWidget: LabelingWidget(parent=LW,...)
+  note right of LWidget
+    LabelingWidget 非常大（~5k 行）：
+    - 构建菜单/工具栏/停靠栏/Canvas/对话框
+    - 绑定信号槽（含 AutoLabelingWidget）
+    - 恢复 QSettings（窗口位置/最近文件/导航器状态等）
+    - 若启动参数给了文件/目录：异步触发 load_file()
+  end note
+
+  == LabelingWidget 初始化关键点 ==
+  opt filename 是目录
+    LWidget -> LWidget: import_image_folder(dir, load=False)
+  else filename 是文件/为空
+    LWidget -> LWidget: self.filename = filename
+  end
+
+  LWidget -> QSet: QSettings("anylabeling","anylabeling")
+  LWidget -> QSet: 读取 recent_files/window size/position
+  LWidget -> LWidget: resize()/move()
+  LWidget -> LWidget: update_file_menu()
+
+  opt filename != None
+    LWidget -> QT: queue_event(partial(load_file, filename))
+    QT -> QT: singleShot(0, function)
+    QT -> LWidget: load_file(filename)
+  end
+
+  LWidget -> QT: singleShot(100, restore_navigator_state)
+
+  == 首次加载文件（load_file） ==
+  LWidget -> LWidget: reset_state(); canvas.setEnabled(False)
+  alt filename is None
+    LWidget -> QSet: settings.value("filename","")
+    QSet --> LWidget: filename
+  end
+  alt 文件不存在
+    LWidget -> LWidget: error_message("No such file")
+    LWidget --> QT: return False
+  else 文件存在
+    LWidget -> LWidget: label_file = IMAGE_BASENAME.json\n(若 output_dir 指定则重定向)
+    alt label_file 存在且是 .json
+      LWidget -> LFile: LabelFile(label_file, image_dir)
+      LFile -> LFile: load(json)\n- 读 shapes/flags/imagePath/imageData\n- base64 decode 或从磁盘读图\n- Shape().load_from_dict(...)
+      LFile --> LWidget: shapes/image_data/image_path/other_data
+      LWidget -> LWidget: 更新 description 文本框(other_data["description"])
+    else 无标注文件
+      LWidget -> LFile: load_image_file(image)
+      LFile --> LWidget: image bytes
+      LWidget -> LWidget: self.label_file=None
+    end
+
+    LWidget -> LWidget: image = QImage.fromData(image_data)
+    alt image.isNull()
+      LWidget -> LWidget: error_message(提示支持格式)
+      LWidget --> QT: return False
+    else ok
+      LWidget -> Canvas: load_pixmap(QPixmap.fromImage(image))
+      LWidget -> LWidget: 载入 flags/shapes 到列表与画布\ntoggle_actions(True)\n状态栏提示
+    end
+  end
+
+  == 自动更新检查（可关闭） ==
+  opt 未传 --no-auto-update-check
+    Main -> QT: singleShot(2000, delayed_update_check)
+    QT -> Upd: check_for_updates_async(timeout=5)
+    Upd -> GH: GET /releases/latest (threading.Thread)
+    GH --> Upd: latest tag
+    Upd -> Upd: version 比较并 logger.info(...)（有更新时）
+  end
+
+  == 展示与事件循环 ==
+  Main -> MW: showMaximized(); raise()
+  Main -> QApp: app.exec()
+end
+@enduml

@@ -2120,7 +2120,7 @@ class LabelingWidget(LabelDialog):
             Qt.Horizontal: {},
             Qt.Vertical: {},
         }  # key=filename, value=scroll_value
-
+        self._prev_view_state = None
         if filename is not None and osp.isdir(filename):
             self.import_image_folder(filename, load=False)
         else:
@@ -2162,6 +2162,51 @@ class LabelingWidget(LabelDialog):
         self.set_text_editing(False)
 
         QtCore.QTimer.singleShot(100, self.restore_navigator_state)
+
+    def _capture_view_state_for_keep_prev_scale(self):
+        """捕获当前图片的视图状态（缩放倍数 + 滚动位置比例）。"""
+        try:
+            zoom_value = int(self.zoom_widget.value())
+        except Exception:
+            zoom_value = 100
+
+        def _ratio(bar):
+            try:
+                m = int(bar.maximum())
+                return 0.0 if m <= 0 else float(bar.value()) / float(m)
+            except Exception:
+                return 0.0
+
+        h_bar = self.scroll_bars.get(Qt.Horizontal)
+        v_bar = self.scroll_bars.get(Qt.Vertical)
+        return {
+            "zoom": zoom_value,
+            "h_ratio": _ratio(h_bar) if h_bar else 0.0,
+            "v_ratio": _ratio(v_bar) if v_bar else 0.0,
+        }
+    
+    def _apply_view_state_for_keep_prev_scale(self, view_state):
+        """在当前图片上应用上一张图的视图状态。"""
+        if not view_state:
+            return
+
+        # 先应用缩放（固定倍数显示，不再走 fit 模式）
+        self.zoom_mode = self.MANUAL_ZOOM
+        self.set_zoom(int(view_state.get("zoom", 100)))
+
+        # 需要先 paint_canvas() 让 scroll bar 的 maximum 更新后，再按比例设置滚动位置
+        self.paint_canvas()
+
+        def _apply_ratio(orientation, ratio):
+            bar = self.scroll_bars.get(orientation)
+            if not bar:
+                return
+            m = int(bar.maximum())
+            value = 0 if m <= 0 else round(m * float(ratio))
+            self.set_scroll(orientation, value)
+
+        _apply_ratio(Qt.Horizontal, view_state.get("h_ratio", 0.0))
+        _apply_ratio(Qt.Vertical, view_state.get("v_ratio", 0.0))
 
     def restore_navigator_state(self) -> None:
         try:
@@ -4526,6 +4571,15 @@ class LabelingWidget(LabelDialog):
             self.file_list_widget.repaint()
             return False
 
+        # 在切换图片前，先记住“当前图片”的视图状态（仅 keep_prev_scale=True）
+        if self._config.get("keep_prev_scale", False):
+            # 只有在当前已有图像/滚动条可用时才记录
+            if hasattr(self, "image") and hasattr(self, "scroll_bars"):
+                if not getattr(self, "image", QtGui.QImage()).isNull():
+                    self._prev_view_state = (
+                        self._capture_view_state_for_keep_prev_scale()
+                    )
+
         self.reset_state()
         self.canvas.setEnabled(False)
         if filename is None:
@@ -4652,19 +4706,34 @@ class LabelingWidget(LabelDialog):
         else:
             self.set_clean()
         self.canvas.setEnabled(True)
-        # set zoom values
-        is_initial_load = not self.zoom_values
-        if self.filename in self.zoom_values:
-            self.zoom_mode = self.zoom_values[self.filename][0]
-            self.set_zoom(self.zoom_values[self.filename][1])
-        elif is_initial_load or not self._config["keep_prev_scale"]:
-            self.adjust_scale(initial=True)
-        # set scroll values
-        for orientation in self.scroll_values:
-            if self.filename in self.scroll_values[orientation]:
-                self.set_scroll(
-                    orientation, self.scroll_values[orientation][self.filename]
-                )
+        # keep_prev_scale=True：无论是否首次加载/是否有 per-file 记录，都按“上一张图”的缩放+滚动显示
+        if self._config.get("keep_prev_scale", False) and self._prev_view_state:
+            self._apply_view_state_for_keep_prev_scale(self._prev_view_state)
+
+        # keep_prev_scale=False：无论是否首次加载/是否有 per-file 记录，都强制“适应宽度”显示
+        elif not self._config.get("keep_prev_scale", False):
+            self.set_fit_width(True)
+            # 可选：统一从左上角开始显示
+            self.set_scroll(Qt.Horizontal, 0)
+            self.set_scroll(Qt.Vertical, 0)
+
+        else:
+            is_initial_load = not self.zoom_values
+            if self.filename in self.zoom_values:
+                self.zoom_mode = self.zoom_values[self.filename][0]
+                self.set_zoom(self.zoom_values[self.filename][1])
+            elif is_initial_load or not self._config["keep_prev_scale"]:
+                self.adjust_scale(initial=True)
+
+            # set scroll values
+            for orientation in self.scroll_values:
+                if self.filename in self.scroll_values[orientation]:
+                    self.set_scroll(
+                        orientation,
+                        self.scroll_values[orientation][self.filename],
+                    )
+
+            self.paint_canvas()
         # set brightness contrast values
         self.brightness_contrast_dialog.update_image(
             utils.img_data_to_pil(self.image_data)

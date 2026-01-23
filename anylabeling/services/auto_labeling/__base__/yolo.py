@@ -146,6 +146,7 @@ class YOLO(Model):
             "doclayout_yolo",
             "yolo11",
             "yolo12",
+            "yolo26",
             "gold_yolo",
             "yolow",
             "yolow_ram",
@@ -327,7 +328,7 @@ class YOLO(Model):
                 max_det=self.max_det,
                 nc=self.nc,
             )
-        elif self.model_type in ["yolov10", "doclayout_yolo", "yolo26"]:
+        elif self.model_type in ["yolov10", "doclayout_yolo","yolo26"]:
             p = self.postprocess_v10(
                 preds[0][0],
                 conf_thres=self.conf_thres,

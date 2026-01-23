@@ -1,0 +1,41 @@
+@startuml
+title AutoLabeling（选择模型→推理→回填标注）时序
+autonumber
+skinparam responseMessageBelowArrow true
+
+actor User
+participant "LabelingWidget" as LWidget
+participant "AutoLabelingWidget" as ALW
+participant "ModelManager" as MM
+participant "QThread" as Thr
+participant "GenericWorker" as Worker
+participant "LoadedModel(model)" as Model
+participant "Canvas/LabelList" as UI
+
+== 选择模型 ==
+User -> ALW: 从下拉框选择模型
+ALW -> ALW: emit new_model_selected(model_name)
+ALW -> MM: load_model(model_name)\n(内部可能下载/初始化/切线程)
+MM --> ALW: new_model_status("Model loaded...")/model_loaded(model_config)
+ALW -> ALW: update_visible_widgets(); on_new_model_loaded()
+
+== 运行推理 ==
+User -> ALW: 点击 Run（或快捷键 I）
+ALW -> MM: predict_shapes_threading(image, filename,\ntext_prompt?, existing_shapes?)
+MM -> MM: emit prediction_started
+MM -> Thr: 创建 model_execution_thread
+MM -> Worker: GenericWorker(predict_shapes, ...)
+MM -> Worker: moveToThread(thread)
+Thr -> Worker: started -> run()
+
+Worker -> MM: predict_shapes(...)
+MM -> Model: model.predict_shapes(...)
+Model --> MM: AutoLabelingResult(shapes, replace, description, ...)
+MM -> MM: emit new_auto_labeling_result(result)
+MM -> MM: emit prediction_finished
+
+MM -> ALW: (lambda) parent.new_shapes_from_auto_labeling(result)
+ALW -> LWidget: new_shapes_from_auto_labeling(result)
+LWidget -> UI: load_shapes()/更新列表/设置description\nset_dirty()
+
+@enduml
