@@ -2,7 +2,7 @@ type: yolo26
 name: yolo26s-r20260124
 provider: Ultralytics
 display_name: YOLO26s
-model_path: https://github.com/CVHub520/X-AnyLabeling/releases/download/v3.0.0/yolo26s.onnx
+model_path: G:/weights/yolo26l.onnx
 iou_threshold: 0.70
 conf_threshold: 0.25
 classes:

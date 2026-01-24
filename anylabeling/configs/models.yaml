@@ -344,8 +344,6 @@
   config_file: ":/yolov10s.yaml"
 - model_name: "yolov10x-r20240525"
   config_file: ":/yolov10x.yaml"
-- model_name: "yolo26n-r20260121"
-  config_file: ":/yolo26n.yaml"
 - model_name: "yolox_l_dwpose_ucoco-r20230820"
   config_file: ":/yolox_l_dwpose_ucoco.yaml"
 - model_name: "yolox_s-r20230520"

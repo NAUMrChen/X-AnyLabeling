@@ -2258,7 +2258,8 @@ class LabelingWidget(LabelDialog):
         roi_shape.add_point(QtCore.QPointF(x1, y2))
 
         # 只加到 canvas，不加到 label_list（避免污染标注列表）
-        self.canvas.load_shapes((self.canvas.shapes or []) + [roi_shape], replace=True)
+        existing_shapes = list(self.canvas.shapes or [])
+        self.canvas.load_shapes([roi_shape] + existing_shapes, replace=True)
         self.canvas.update()
 
     def _get_selected_rectangle_roi(self):
