@@ -417,6 +417,7 @@ def show_progress_dialog_and_process(self):
     progress_dialog.setLabelText(
         f"Progress: {initial_progress}/{len(self.image_list)}"
     )
+    progress_dialog.setLabelText(f"Progress: 0/{total}")
     progress_bar = progress_dialog.findChild(QtWidgets.QProgressBar)
 
     if progress_bar:
@@ -567,33 +568,19 @@ def run_all_images(self):
         )
         return
 
-    response = QtWidgets.QMessageBox()
-    response.setIcon(QtWidgets.QMessageBox.Warning)
-    response.setWindowTitle(self.tr("Confirmation"))
-    response.setText(self.tr("Do you want to process all images?"))
-    response.setStandardButtons(
-        QtWidgets.QMessageBox.Cancel | QtWidgets.QMessageBox.Ok
-    )
-    response.setStyleSheet(get_msg_box_style())
-    if response.exec_() != QtWidgets.QMessageBox.Ok:
-        return
+    logger.info("Start running images in selected range...")
 
-    logger.info("Start running all images...")
-
-    self.current_index = self.fn_to_index[str(self.filename)]
-    self.image_index = self.current_index
+    # ✅ 让批处理从 start_i 开始，到 end_i 结束
+    self.current_index = int(start_i)
+    self.image_index = int(start_i)
     self.text_prompt = ""
     self.run_tracker = False
 
-    model_type = self.auto_labeling_widget.model_manager.loaded_model_config[
-        "type"
-    ]
+    model_type = self.auto_labeling_widget.model_manager.loaded_model_config["type"]
+    batch_processing_mode = "default"
 
     if model_type == "remote_server":
-        batch_processing_mode = "default"
-        model = self.auto_labeling_widget.model_manager.loaded_model_config[
-            "model"
-        ]
+        model = self.auto_labeling_widget.model_manager.loaded_model_config["model"]
         if hasattr(model, "get_batch_processing_mode"):
             batch_processing_mode = model.get_batch_processing_mode()
         else:
