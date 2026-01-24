@@ -32,6 +32,7 @@ class RFDETR(Model):
             "input_conf",
             "edit_conf",
             "toggle_preserve_existing_annotations",
+            "button_roi_auto_label",
         ]
         output_modes = {
             "polygon": QCoreApplication.translate("Model", "Polygon"),
@@ -73,6 +74,30 @@ class RFDETR(Model):
         self.show_boxes = self.config.get("show_boxes", False)
         self.epsilon = self.config.get("epsilon", 0.001)
         self.replace = True
+
+    @staticmethod
+    def _sanitize_roi(roi, img_w: int, img_h: int):
+        """roi: (x1,y1,x2,y2) -> clamp + normalize, invalid returns None"""
+        if roi is None:
+            return None
+        try:
+            x1, y1, x2, y2 = [int(round(float(v))) for v in roi]
+        except Exception:
+            return None
+
+        if x2 < x1:
+            x1, x2 = x2, x1
+        if y2 < y1:
+            y1, y2 = y2, y1
+
+        x1 = max(0, min(x1, img_w - 1))
+        y1 = max(0, min(y1, img_h - 1))
+        x2 = max(0, min(x2, img_w))
+        y2 = max(0, min(y2, img_h))
+
+        if (x2 - x1) < 2 or (y2 - y1) < 2:
+            return None
+        return (x1, y1, x2, y2)
 
     def set_auto_labeling_conf(self, value):
         """set auto labeling confidence threshold"""
@@ -196,56 +221,68 @@ class RFDETR(Model):
 
         return boxes, scores, labels, masks
 
-    def predict_shapes(self, image, image_path=None):
+    def predict_shapes(self, image, image_path=None, roi=None):
         """
         Predict shapes from image
+        支持 roi=(x1,y1,x2,y2)：在 ROI 子图上推理，再回填到整图坐标。
         """
-
         if image is None:
             return []
 
         try:
-            image = Image.open(image_path)
-            image_shape = image.size[::-1]
+            pil_img = Image.open(image_path)
+            full_w, full_h = pil_img.size
         except Exception as e:
             logger.warning("Could not inference model")
             logger.warning(e)
             return []
 
-        blob = self.preprocess(image)
+        roi = self._sanitize_roi(roi, full_w, full_h)
+        if roi is not None:
+            rx1, ry1, rx2, ry2 = roi
+            infer_pil = pil_img.crop((rx1, ry1, rx2, ry2))
+            offset_x, offset_y = rx1, ry1
+            image_shape = infer_pil.size[::-1]  # (h,w)
+        else:
+            infer_pil = pil_img
+            offset_x, offset_y = 0, 0
+            image_shape = pil_img.size[::-1]
+
+        blob = self.preprocess(infer_pil)
         detections = self.net.get_ort_inference(
             blob, extract=False, squeeze=False
         )
-        boxes, scores, labels, masks = self.postprocess(
-            detections, image_shape
-        )
+        boxes, scores, labels, masks = self.postprocess(detections, image_shape)
+
         shapes = []
 
         if self.has_mask and masks is not None:
             segments = masks2segments(masks, self.epsilon)
-            for i, (segment, box, score, label) in enumerate(
-                zip(segments, boxes, scores, labels)
-            ):
+            for segment, box, score, label in zip(segments, boxes, scores, labels):
+                # polygon（坐标回填）
                 shape = Shape(
                     label=self.classes[int(label)],
                     score=float(score),
                     shape_type="polygon",
                 )
                 for point in segment:
-                    shape.add_point(QtCore.QPointF(point[0], point[1]))
+                    shape.add_point(
+                        QtCore.QPointF(point[0] + offset_x, point[1] + offset_y)
+                    )
                 shape.closed = True
                 shapes.append(shape)
 
+                # 可选显示 bbox（坐标回填）
                 if self.show_boxes:
                     box_shape = Shape(
                         label=self.classes[int(label)],
                         score=float(score),
                         shape_type="rectangle",
                     )
-                    box_shape.add_point(QtCore.QPointF(box[0], box[1]))
-                    box_shape.add_point(QtCore.QPointF(box[2], box[1]))
-                    box_shape.add_point(QtCore.QPointF(box[2], box[3]))
-                    box_shape.add_point(QtCore.QPointF(box[0], box[3]))
+                    box_shape.add_point(QtCore.QPointF(box[0] + offset_x, box[1] + offset_y))
+                    box_shape.add_point(QtCore.QPointF(box[2] + offset_x, box[1] + offset_y))
+                    box_shape.add_point(QtCore.QPointF(box[2] + offset_x, box[3] + offset_y))
+                    box_shape.add_point(QtCore.QPointF(box[0] + offset_x, box[3] + offset_y))
                     shapes.append(box_shape)
         else:
             for box, score, label in zip(boxes, scores, labels):
@@ -254,14 +291,13 @@ class RFDETR(Model):
                     score=float(score),
                     shape_type="rectangle",
                 )
-                shape.add_point(QtCore.QPointF(box[0], box[1]))
-                shape.add_point(QtCore.QPointF(box[2], box[1]))
-                shape.add_point(QtCore.QPointF(box[2], box[3]))
-                shape.add_point(QtCore.QPointF(box[0], box[3]))
+                shape.add_point(QtCore.QPointF(box[0] + offset_x, box[1] + offset_y))
+                shape.add_point(QtCore.QPointF(box[2] + offset_x, box[1] + offset_y))
+                shape.add_point(QtCore.QPointF(box[2] + offset_x, box[3] + offset_y))
+                shape.add_point(QtCore.QPointF(box[0] + offset_x, box[3] + offset_y))
                 shapes.append(shape)
 
-        result = AutoLabelingResult(shapes, replace=self.replace)
-        return result
+        return AutoLabelingResult(shapes, replace=self.replace)
 
     def unload(self):
         del self.net
