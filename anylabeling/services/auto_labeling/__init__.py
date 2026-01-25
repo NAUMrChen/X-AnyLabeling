@@ -78,6 +78,7 @@ _CUSTOM_MODELS = [
     "ppocr_v5",
     "deimv2",
     "yolo26",
+    "yolo26_det_track",
 ]
 
 
@@ -174,6 +175,7 @@ _AUTO_LABELING_RESET_TRACKER_MODELS = [
     "yolo11_seg_track",
     "yolo11_obb_track",
     "yolo11_pose_track",
+    "yolo26_det_track",
 ]
 
 
@@ -226,6 +228,7 @@ _AUTO_LABELING_CONF_MODELS = [
     "u_rtdetr",
     "yoloe",
     "grounding_sam2",
+    "yolo26_det_track",
 ]
 
 
@@ -263,6 +266,7 @@ _AUTO_LABELING_IOU_MODELS = [
     "yolox",
     "yolo12",
     "yoloe",
+    "yolo26_det_track",
 ]
 
 
@@ -314,6 +318,7 @@ _AUTO_LABELING_PRESERVE_EXISTING_ANNOTATIONS_STATE_MODELS = [
     "yoloe",
     "segment_anything_2_video",
     "yolo26",
+    "yolo26_det_track",
 ]
 
 

@@ -86,7 +86,17 @@ class YOLO(Model):
                 self.input_width = self.config.get("input_width", -1)
             if not isinstance(self.input_height, int):
                 self.input_height = self.config.get("input_height", -1)
-
+        # 注意：动态输入时不要让 input_shape 变成 (-1, -1)
+        if (
+            isinstance(self.input_height, int)
+            and isinstance(self.input_width, int)
+            and self.input_height > 0
+            and self.input_width > 0
+        ):
+            self.input_shape = (self.input_height, self.input_width)
+        else:
+            self.input_shape = None  # 在 preprocess() 中按图像动态计算
+            
         self.replace = True
         self.model_type = self.config["type"]
         self.classes = self.config.get("classes", [])
@@ -100,7 +110,7 @@ class YOLO(Model):
         self.max_det = self.config.get("max_det", 300)
         self.filter_classes = self.config.get("filter_classes", None)
         self.nc = len(self.classes)
-        self.input_shape = (self.input_height, self.input_width)
+        
         if self.anchors:
             self.nl = len(self.anchors)
             self.na = len(self.anchors[0]) // 2
@@ -147,7 +157,6 @@ class YOLO(Model):
             "doclayout_yolo",
             "yolo11",
             "yolo12",
-            "yolo26",
             "gold_yolo",
             "yolow",
             "yolow_ram",
@@ -156,6 +165,7 @@ class YOLO(Model):
             "yolo11_det_track",
             "u_rtdetr",
             "yolo26",
+            "yolo26_det_track",
         ]:
             self.task = "det"
         elif self.model_type in [
@@ -227,6 +237,26 @@ class YOLO(Model):
             return None
         return (x1, y1, x2, y2)
 
+    def _get_dynamic_input_shape(self, img_h: int, img_w: int) -> Tuple[int, int]:
+        """
+        动态输入：根据当前图像尺寸得到本次推理的 input_shape（H, W）。
+        默认按 stride 向上取整，尽量少 padding。
+        可选：dynamic_max_side 限制最大边，避免超大图导致显存/内存压力。
+        """
+        stride = self.config.get("stride", 32)
+
+        max_side = self.config.get("dynamic_max_side", None)
+        if isinstance(max_side, int) and max_side > 0:
+            scale = min(max_side / max(img_h, img_w), 1.0)
+            img_h = int(round(img_h * scale))
+            img_w = int(round(img_w * scale))
+
+        target_h = int(np.ceil(img_h / stride) * stride)
+        target_w = int(np.ceil(img_w / stride) * stride)
+        target_h = max(stride, target_h)
+        target_w = max(stride, target_w)
+        return (target_h, target_w)
+
     def set_auto_labeling_conf(self, value):
         """set auto labeling confidence threshold"""
         if value > 0:
@@ -257,24 +287,39 @@ class YOLO(Model):
 
     def preprocess(self, image, upsample_mode="letterbox"):
         self.img_height, self.img_width = image.shape[:2]
+
+        # 计算本次实际输入尺寸（固定 or 动态）
+        use_dynamic = (
+            self.input_shape is None
+            or (not isinstance(self.input_shape, (tuple, list)))
+            or len(self.input_shape) != 2
+            or self.input_shape[0] is None
+            or self.input_shape[1] is None
+            or int(self.input_shape[0]) <= 0
+            or int(self.input_shape[1]) <= 0
+        )
+        if use_dynamic:
+            target_h, target_w = self._get_dynamic_input_shape(
+                self.img_height, self.img_width
+            )
+            self.input_shape = (target_h, target_w)
+        else:
+            target_h, target_w = int(self.input_shape[0]), int(self.input_shape[1])
+
         # Upsample
         if upsample_mode == "resize":
-            input_img = cv2.resize(
-                image, (self.input_width, self.input_height)
-            )
+            input_img = cv2.resize(image, (target_w, target_h))
         elif upsample_mode == "letterbox":
-            input_img = letterbox(image, self.input_shape)[0]
+            input_img = letterbox(image, (target_h, target_w))[0]
         elif upsample_mode == "centercrop":
             m = min(self.img_height, self.img_width)
             top = (self.img_height - m) // 2
             left = (self.img_width - m) // 2
             cropped_img = image[top : top + m, left : left + m]
-            input_img = cv2.resize(
-                cropped_img, (self.input_width, self.input_height)
-            )
+            input_img = cv2.resize(cropped_img, (target_w, target_h))
         elif upsample_mode == "scaleresize":
-            ratio_width = self.input_shape[1] / self.img_width
-            ratio_height = self.input_shape[0] / self.img_height
+            ratio_width = target_w / self.img_width
+            ratio_height = target_h / self.img_height
             input_img = cv2.resize(
                 image,
                 (0, 0),
@@ -282,6 +327,10 @@ class YOLO(Model):
                 fy=ratio_height,
                 interpolation=cv2.INTER_LINEAR,
             )
+        else:
+            # 保底：未知模式时使用 letterbox
+            input_img = letterbox(image, (target_h, target_w))[0]
+
         # Transpose
         input_img = input_img.transpose(2, 0, 1)
         # Expand
@@ -352,7 +401,7 @@ class YOLO(Model):
                 max_det=self.max_det,
                 nc=self.nc,
             )
-        elif self.model_type in ["yolov10", "doclayout_yolo", "yolo26"]:
+        elif self.model_type in ["yolov10", "doclayout_yolo", "yolo26", "yolo26_det_track"]:
             p = self.postprocess_v10(
                 preds[0][0],
                 conf_thres=self.conf_thres,

@@ -1,10 +1,29 @@
-type: yolo26
-name: yolo26s-r20260124
+type: yolo26_det_track
+name: yolo26_det_track-r20260125
 provider: Ultralytics
-display_name: YOLO26s
+display_name: YOLO26m-Det-BoT-SORT
 model_path: E:\Project\ultralytics\runs\detect\runs\train\exp17\weights\best.onnx
-iou_threshold: 0.70
-conf_threshold: 0.25
+iou_threshold: 0.5
+conf_threshold: 0.1
+tracker:
+  # Base settings
+  tracker_type: botsort # tracker type, ['botsort', 'bytetrack']
+  track_high_thresh: 0.5 # threshold for the first association
+  track_low_thresh: 0.1 # threshold for the second association
+  new_track_thresh: 0.6 # threshold for init new track if the detection does not match any tracks
+  track_buffer: 30 # buffer to calculate the time when to remove tracks
+  match_thresh: 0.8 # threshold for matching tracks
+  fuse_score: True
+  # BoT-SORT settings
+  gmc_method: sparseOptFlow # method of global motion compensation
+  # ReID model related thresh (not supported yet)
+  proximity_thresh: 0.5
+  appearance_thresh: 0.25
+  with_reid: False
+filter_classes:
+  - mt
+  - uk
+  - wm
 classes:
   - mt
   - uk
