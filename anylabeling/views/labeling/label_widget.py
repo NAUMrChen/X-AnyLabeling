@@ -35,7 +35,9 @@ from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
 from anylabeling.views.training import UltralyticsDialog
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
-
+from anylabeling.views.labeling.utils.opencv import qt_img_to_rgb_cv_img
+import numpy as np
+import cv2
 from ...app_info import (
     __appname__,
     __version__,
@@ -1908,6 +1910,9 @@ class LabelingWidget(LabelDialog):
         self.label_instruction = QLabel(self.get_labeling_instruction())
         self.label_instruction.setContentsMargins(0, 0, 0, 0)
         self.auto_labeling_widget = AutoLabelingWidget(self)
+        self.auto_labeling_widget.model_manager.model_loaded.connect(
+            self._on_auto_model_loaded_install_match_template_hooks
+        )
         self.auto_labeling_widget.auto_segmentation_requested.connect(
             self.on_auto_segmentation_requested
         )
@@ -2280,9 +2285,184 @@ class LabelingWidget(LabelDialog):
         x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
         return (x1, y1, x2, y2)
 
-    def run_auto_labeling_on_selected_roi(self):
-        """只对当前选中的矩形区域执行一次自动标注（含 tracker 编号）。"""
-        roi = self._get_selected_rectangle_roi()
+    def _on_auto_model_loaded_install_match_template_hooks(self, model_config: dict):
+        """match_template 模型：接管 Run/RunRect；其它模型：恢复默认。"""
+        model_type = (model_config or {}).get("type")
+        is_mt = (model_type == "match_template")
+
+        btns = []
+        if hasattr(self.auto_labeling_widget, "button_run"):
+            btns.append(self.auto_labeling_widget.button_run)
+        if hasattr(self.auto_labeling_widget, "button_run_rect"):
+            btns.append(self.auto_labeling_widget.button_run_rect)
+
+        for b in btns:
+            # 先清理两种可能的连接，避免重复触发
+            try:
+                b.clicked.disconnect(self.auto_labeling_widget.run_prediction)
+            except Exception:
+                pass
+            try:
+                b.clicked.disconnect(self.run_match_template_tracking)
+            except Exception:
+                pass
+
+            # 按模型类型重连
+            if is_mt:
+                b.clicked.connect(self.run_match_template_tracking)
+            else:
+                b.clicked.connect(self.auto_labeling_widget.run_prediction)
+
+    def _shape_bbox_xyxy(self, shape):
+        pts = getattr(shape, "points", None) or []
+        if not pts:
+            return None
+        xs = [p.x() for p in pts]
+        ys = [p.y() for p in pts]
+        if not xs or not ys:
+            return None
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def _extract_match_templates_from_selected_shapes(self):
+        """
+        从当前图像 + 当前选中 shapes 裁剪模板。
+        要求：shape.label 非空，shape.group_id 非空；shape 为 rectangle/rotation/polygon 之一。
+        """
+        selected = list(getattr(self.canvas, "selected_shapes", None) or [])
+        # 排除 ROI/自动标注临时形状
+        selected = [
+            s
+            for s in selected
+            if getattr(s, "label", None)
+            not in [
+                AutoLabelingMode.OBJECT,
+                AutoLabelingMode.ADD,
+                AutoLabelingMode.REMOVE,
+                AutoLabelingMode.ROI,
+            ]
+        ]
+
+        if not selected:
+            self.status(self.tr("请先选中一个或多个已标注的检测框。"), 3000)
+            return None
+
+        # 转 cv 图（RGB）
+        try:
+            full_img = qt_img_to_rgb_cv_img(self.image, self.image_path)
+        except Exception as e:
+            self.status(self.tr(f"读取当前图像失败: {e}"), 4000)
+            return None
+
+        h, w = full_img.shape[:2]
+        templates = []
+        for s in selected:
+            label = getattr(s, "label", None)
+            gid = getattr(s, "group_id", None)
+
+            if not label:
+                self.status(self.tr("选中的框存在空标签(label)，请先补全。"), 4000)
+                return None
+            if gid is None:
+                self.status(self.tr("选中的框存在空组编号(group_id)，请先设置 group_id。"), 4000)
+                return None
+
+            bbox = self._shape_bbox_xyxy(s)
+            if bbox is None:
+                continue
+
+            x1, y1, x2, y2 = bbox
+            x1 = int(max(0, min(round(x1), w - 1)))
+            y1 = int(max(0, min(round(y1), h - 1)))
+            x2 = int(max(0, min(round(x2), w)))
+            y2 = int(max(0, min(round(y2), h)))
+
+            if (x2 - x1) < 2 or (y2 - y1) < 2:
+                continue
+
+            tmpl = full_img[y1:y2, x1:x2].copy()
+            if tmpl.size == 0:
+                continue
+
+            templates.append({"image": tmpl, "label": str(label), "group_id": int(gid)})
+
+        if not templates:
+            self.status(self.tr("未能从选中的框裁剪出有效模板。"), 3000)
+            return None
+
+        return templates
+
+    def run_match_template_tracking(self):
+        """
+        match_template 专用：
+        - 当前图选中已标注框 => 裁剪模板
+        - 打开下一张图并显示 ROI
+        - 在下一张图 ROI 内 matchTemplate，生成标注框（沿用 group_id）
+        """
+        model_cfg = getattr(self.auto_labeling_widget.model_manager, "loaded_model_config", None) or {}
+        if model_cfg.get("type") != "match_template":
+            # 兜底：不是该模型则走默认
+            self.auto_labeling_widget.run_prediction()
+            return
+
+        if not self.filename:
+            return
+
+        templates = self._extract_match_templates_from_selected_shapes()
+        if not templates:
+            return
+
+        roi = self.get_roi_for_auto_labeling()  # 可能为 None，yolo 内会自动当全图
+
+        # 先切到下一张图（让用户先看到下一张 + ROI）
+        prev_filename = self.filename
+        self.open_next_image(load=True)
+        if not self.filename or self.filename == prev_filename:
+            self.status(self.tr("没有下一张图像可用于模板跟踪。"), 3000)
+            return
+
+        # 运行 match_template（复用你的入口方法名）
+        self.run_auto_labeling_on_selected_roi(
+            roi=roi,
+            templates=templates,
+            image=self.image,
+            image_path=self.image_path,
+        )
+
+
+    def run_auto_labeling_on_selected_roi(self, roi=None, templates=None, image=None, image_path=None):
+        """
+        - 旧行为：选中一个矩形作为 ROI，调用 model_manager.predict_shapes_threading(..., roi=roi)
+        - 新行为（match_template）：直接调用 yolo.predict_shapes(image, image_path, roi, templates)
+        """
+        # 默认取当前图
+        if image is None:
+            image = self.image
+        if image_path is None:
+            image_path = self.image_path
+
+        model_cfg = getattr(self.auto_labeling_widget.model_manager, "loaded_model_config", None) or {}
+        model_obj = model_cfg.get("model", None)
+
+        # match_template：直接调用 yolo.predict_shapes
+        if model_cfg.get("type") == "match_template" and templates is not None and model_obj is not None:
+            try:
+                self.auto_labeling_widget.model_manager.prediction_started.emit()
+                result = model_obj.predict_shapes(
+                    image=image,
+                    image_path=image_path,
+                    roi=roi,
+                    templates=templates,
+                )
+                self.new_shapes_from_auto_labeling(result)
+            except Exception as e:
+                self.status(self.tr(f"模板匹配失败: {e}"), 4000)
+            finally:
+                self.auto_labeling_widget.model_manager.prediction_finished.emit()
+            return
+
+        # ---- 旧逻辑保持：必须选中一个矩形 ROI ----
+        if roi is None:
+            roi = self._get_selected_rectangle_roi()
         if roi is None:
             self.status(self.tr("Please select exactly one rectangle as ROI."), 3000)
             return
@@ -2292,8 +2472,8 @@ class LabelingWidget(LabelDialog):
             return
 
         self.auto_labeling_widget.model_manager.predict_shapes_threading(
-            self.image,
-            self.image_path,
+            image,
+            image_path,
             roi=roi,
         )
         
@@ -5626,6 +5806,25 @@ class LabelingWidget(LabelDialog):
         rx1, ry1, rx2, ry2 = roi_xyxy
         return (x1 < rx2) and (x2 > rx1) and (y1 < ry2) and (y2 > ry1)
     
+    def _select_shapes_after_auto_labeling(self, shapes):
+        """将自动标注产生的目标设为已选择（同步 canvas 与 label_list）。"""
+        if not shapes:
+            return
+        try:
+            # 先清理旧选择状态
+            for s in getattr(self.canvas, "selected_shapes", []) or []:
+                s.selected = False
+
+            # 标记新 shapes 为选中
+            for s in shapes:
+                s.selected = True
+
+            # 通过 canvas 的选择机制触发 UI 联动（label_list 选中/滚动/高亮）
+            self.canvas.select_shapes(list(shapes))
+            self.canvas.update()
+        except Exception as e:
+            logger.warning(f"Failed to select shapes after auto labeling: {e}")
+            
     @pyqtSlot()
     def new_shapes_from_auto_labeling(self, auto_labeling_result):
         """Apply auto labeling results to the current image."""
@@ -5675,6 +5874,7 @@ class LabelingWidget(LabelDialog):
                 self.other_data["description"] = description
                 self.shape_text_edit.setDisabled(False)
 
+            self._select_shapes_after_auto_labeling(auto_labeling_result.shapes or [])
             self.set_dirty()
             return
 
@@ -5692,6 +5892,7 @@ class LabelingWidget(LabelDialog):
             self.load_shapes(auto_labeling_result.shapes, replace=False)
 
         self._ensure_roi_shape_visible()
+        self._select_shapes_after_auto_labeling(auto_labeling_result.shapes or [])
         # Set image description
         if auto_labeling_result.description:
             description = auto_labeling_result.description

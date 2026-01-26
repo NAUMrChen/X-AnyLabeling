@@ -241,6 +241,9 @@ def finish_processing(self, progress_dialog):
         del self._batch_start_index
     if hasattr(self, "_batch_end_index"):
         del self._batch_end_index
+    # ✅ 新增：清理 match_template 模板
+    if hasattr(self, "_batch_templates"):
+        del self._batch_templates
 
     progress_dialog.close()
 
@@ -333,6 +336,41 @@ def process_next_image(self, progress_dialog, batch=True):
 
             model_type = self.auto_labeling_widget.model_manager.loaded_model_config["type"]
             batch_processing_mode = "default"
+
+            # ✅ 新增：match_template 走自定义批处理（逐张 load + 传 templates）
+            if model_type == "match_template":
+                templates = getattr(self, "_batch_templates", None)
+                if not templates:
+                    self.auto_labeling_widget.model_manager.new_model_status.emit(
+                        self.tr("模板匹配批处理失败：未找到模板，请先在当前图像选中已标注框。")
+                    )
+                    break
+
+                # 逐张加载，确保 self.image / self.image_path 正确
+                self.filename = image_file
+                self.load_file(self.filename)
+
+                roi = getattr(self, "_batch_roi", None)
+                model = self.auto_labeling_widget.model_manager.loaded_model_config.get("model", None)
+                if model is None:
+                    self.auto_labeling_widget.model_manager.new_model_status.emit(
+                        self.tr("模板匹配批处理失败：模型未加载。")
+                    )
+                    break
+
+                auto_labeling_result = model.predict_shapes(
+                    image=self.image,
+                    image_path=image_file,
+                    roi=roi,
+                    templates=templates,
+                )
+
+                if batch:
+                    save_auto_labeling_result(self, image_file, auto_labeling_result)
+
+                progress_dialog.setValue(self.image_index - start_i)
+                self.image_index += 1
+                continue
 
             if model_type == "remote_server":
                 model = self.auto_labeling_widget.model_manager.loaded_model_config["model"]
@@ -517,12 +555,36 @@ def run_all_images(self):
     response.setStyleSheet(get_msg_box_style())
     if response.exec_() != QtWidgets.QMessageBox.Ok:
         return
-
+    
+    # ✅ 新增：match_template 批处理前提取模板（来自当前图像选中标注框）
+    model_type = self.auto_labeling_widget.model_manager.loaded_model_config.get("type", "")
+    if model_type == "match_template":
+        if not hasattr(self, "_extract_match_templates_from_selected_shapes"):
+            self.auto_labeling_widget.model_manager.new_model_status.emit(
+                self.tr("模板匹配批处理失败：当前窗口不支持提取模板。")
+            )
+            return
+        templates = self._extract_match_templates_from_selected_shapes()
+        if not templates:
+            # 内部已提示（无选中/label空/gid空/裁剪失败）
+            return
+        self._batch_templates = templates
+        
     # ✅ 新增：选择范围（默认：当前 -> 最后）
     if not hasattr(self, "fn_to_index") or self.filename is None:
         return
     current_index = self.fn_to_index.get(str(self.filename), 0)
     total_images = len(self.image_list)
+    
+    default_start = current_index
+    if model_type == "match_template":
+        default_start = min(current_index + 1, max(0, total_images - 1))
+        if default_start == current_index and total_images <= 1:
+            self.auto_labeling_widget.model_manager.new_model_status.emit(
+                self.tr("模板匹配批处理需要至少两张图片：当前帧用于模板，后续帧用于匹配。")
+            )
+            return
+        
     dlg = RangeSelectDialog(
         parent=self,
         total_images=total_images,

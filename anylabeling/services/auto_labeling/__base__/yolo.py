@@ -464,13 +464,121 @@ class YOLO(Model):
             clas = pred[:, 5:6]
         return (bbox, clas, conf, masks, keypoints)
 
-    def predict_shapes(self, image, image_path=None, roi=None):
+    def predict_shapes(self, image, image_path=None, roi=None, templates=None):
         """
         Predict shapes from image
         """
 
         if image is None:
             return []
+
+        # --- matchTemplate 分支 ---
+        if getattr(self, "model_type", None) == "match_template":
+            try:
+                full_img = qt_img_to_rgb_cv_img(image, image_path)
+            except Exception as e:  # noqa
+                logger.warning("Could not convert image for match_template")
+                logger.warning(e)
+                return AutoLabelingResult([], replace=self.replace)
+
+            if not templates:
+                return AutoLabelingResult([], replace=self.replace)
+
+            full_h, full_w = full_img.shape[:2]
+            roi_s = self._sanitize_roi(roi, full_w, full_h)
+            if roi_s is None:
+                roi_s = (0, 0, full_w, full_h)
+
+            rx1, ry1, rx2, ry2 = roi_s
+            search_img = full_img[ry1:ry2, rx1:rx2]
+            if search_img.size == 0:
+                return AutoLabelingResult([], replace=self.replace)
+
+            # 灰度匹配更稳也更快
+            if search_img.ndim == 3:
+                search_gray = cv2.cvtColor(search_img, cv2.COLOR_RGB2GRAY)
+            else:
+                search_gray = search_img
+
+            match_method = getattr(cv2, self.config.get("match_method", "TM_CCOEFF_NORMED"), cv2.TM_CCOEFF_NORMED)
+            match_threshold = float(self.config.get("match_threshold", 0.6))
+
+            shapes = []
+            for t in templates:
+                tmpl = None
+                label = "object"
+                gid = None
+                try:
+                    if isinstance(t, dict):
+                        tmpl = t.get("image", None)
+                        label = t.get("label", label)
+                        gid = t.get("group_id", None)
+                    else:
+                        tmpl = t
+                except Exception:
+                    tmpl = None
+
+                if tmpl is None:
+                    continue
+                if not isinstance(tmpl, np.ndarray) or tmpl.size == 0:
+                    continue
+
+                tmpl_img = tmpl
+                if tmpl_img.ndim == 3:
+                    tmpl_gray = cv2.cvtColor(tmpl_img, cv2.COLOR_RGB2GRAY)
+                else:
+                    tmpl_gray = tmpl_img
+
+                th, tw = tmpl_gray.shape[:2]
+                if th < 2 or tw < 2:
+                    continue
+                if search_gray.shape[0] < th or search_gray.shape[1] < tw:
+                    # 模板比搜索区域大，跳过
+                    continue
+
+                try:
+                    res = cv2.matchTemplate(search_gray, tmpl_gray, match_method)
+                    _minVal, maxVal, _minLoc, maxLoc = cv2.minMaxLoc(res)
+                except Exception as e:
+                    logger.warning(f"matchTemplate failed: {e}")
+                    continue
+
+                if float(maxVal) < match_threshold:
+                    continue
+
+                x1 = rx1 + int(maxLoc[0])
+                y1 = ry1 + int(maxLoc[1])
+                x2 = x1 + int(tw)
+                y2 = y1 + int(th)
+
+                # clamp
+                x1 = max(0, min(x1, full_w - 1))
+                y1 = max(0, min(y1, full_h - 1))
+                x2 = max(0, min(x2, full_w))
+                y2 = max(0, min(y2, full_h))
+
+                if (x2 - x1) < 2 or (y2 - y1) < 2:
+                    continue
+
+                shape = Shape(flags={})
+                shape.add_point(QtCore.QPointF(float(x1), float(y1)))
+                shape.add_point(QtCore.QPointF(float(x2), float(y1)))
+                shape.add_point(QtCore.QPointF(float(x2), float(y2)))
+                shape.add_point(QtCore.QPointF(float(x1), float(y2)))
+                shape.shape_type = "rectangle"
+                shape.closed = True
+                shape.label = str(label) if label is not None else "object"
+                shape.score = float(maxVal)
+                shape.selected = False
+                if gid is not None:
+                    try:
+                        shape.group_id = int(gid)
+                    except Exception:
+                        pass
+
+                shapes.append(shape)
+
+            return AutoLabelingResult(shapes, replace=self.replace)
 
         try:
             image = qt_img_to_rgb_cv_img(image, image_path)
