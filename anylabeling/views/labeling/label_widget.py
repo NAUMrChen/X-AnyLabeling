@@ -2248,6 +2248,9 @@ class LabelingWidget(LabelDialog):
             return
 
         roi_shape = Shape(flags={})
+        roi_shape.fill = True
+        roi_shape.fill_color = QtGui.QColor(255, 255, 255, 10)
+        roi_shape.select_fill_color = QtGui.QColor(255, 255, 255, 50)
         roi_shape.shape_type = "rectangle"
         roi_shape.closed = True
         roi_shape.label = AutoLabelingMode.ROI

@@ -57,45 +57,45 @@ class YOLO(Model):
     def __init__(self, model_config, on_message) -> None:
         # Run the parent class's init method
         super().__init__(model_config, on_message)
-
-        model_abs_path = self.get_model_abs_path(self.config, "model_path")
-        if not model_abs_path or not os.path.isfile(model_abs_path):
-            raise FileNotFoundError(
-                QCoreApplication.translate(
-                    "Model",
-                    f"Could not download or initialize {self.config['type']} model.",
+        if self.config["type"]  != "match_template":
+            model_abs_path = self.get_model_abs_path(self.config, "model_path")
+            if not model_abs_path or not os.path.isfile(model_abs_path):
+                raise FileNotFoundError(
+                    QCoreApplication.translate(
+                        "Model",
+                        f"Could not download or initialize {self.config['type']} model.",
+                    )
                 )
-            )
 
-        self.engine = self.config.get("engine", "ort")
-        if self.engine.lower() == "dnn":
-            from ..engines import DnnBaseModel
+            self.engine = self.config.get("engine", "ort")
+            if self.engine.lower() == "dnn":
+                from ..engines import DnnBaseModel
 
-            self.net = DnnBaseModel(model_abs_path, __preferred_device__)
-            self.input_width = self.config.get("input_width", 640)
-            self.input_height = self.config.get("input_height", 640)
-        else:
-            self.net = OnnxBaseModel(model_abs_path, __preferred_device__)
-            (
-                _,
-                _,
-                self.input_height,
-                self.input_width,
-            ) = self.net.get_input_shape()
-            if not isinstance(self.input_width, int):
-                self.input_width = self.config.get("input_width", -1)
-            if not isinstance(self.input_height, int):
-                self.input_height = self.config.get("input_height", -1)
-        # 注意：动态输入时不要让 input_shape 变成 (-1, -1)
-        if (
-            isinstance(self.input_height, int)
-            and isinstance(self.input_width, int)
-            and self.input_height > 0
-            and self.input_width > 0
-        ):
-            self.input_shape = (self.input_height, self.input_width)
-        else:
-            self.input_shape = None  # 在 preprocess() 中按图像动态计算
+                self.net = DnnBaseModel(model_abs_path, __preferred_device__)
+                self.input_width = self.config.get("input_width", 640)
+                self.input_height = self.config.get("input_height", 640)
+            else:
+                self.net = OnnxBaseModel(model_abs_path, __preferred_device__)
+                (
+                    _,
+                    _,
+                    self.input_height,
+                    self.input_width,
+                ) = self.net.get_input_shape()
+                if not isinstance(self.input_width, int):
+                    self.input_width = self.config.get("input_width", -1)
+                if not isinstance(self.input_height, int):
+                    self.input_height = self.config.get("input_height", -1)
+            # 注意：动态输入时不要让 input_shape 变成 (-1, -1)
+            if (
+                isinstance(self.input_height, int)
+                and isinstance(self.input_width, int)
+                and self.input_height > 0
+                and self.input_width > 0
+            ):
+                self.input_shape = (self.input_height, self.input_width)
+            else:
+                self.input_shape = None  # 在 preprocess() 中按图像动态计算
             
         self.replace = True
         self.model_type = self.config["type"]
@@ -244,6 +244,11 @@ class YOLO(Model):
         可选：dynamic_max_side 限制最大边，避免超大图导致显存/内存压力。
         """
         stride = self.config.get("stride", 32)
+        
+        min_side = self.config.get("dynamic_min_side", 320)
+        if isinstance(min_side, int) and min_side > 0:
+            img_h = max(img_h, min_side)
+            img_w = max(img_w, min_side)
 
         max_side = self.config.get("dynamic_max_side", None)
         if isinstance(max_side, int) and max_side > 0:
@@ -589,7 +594,7 @@ class YOLO(Model):
                 shape = self.create_obb_shape(box, score, class_id, track_id)
                 shapes.append(shape)
         result = AutoLabelingResult(shapes, replace=self.replace)
-
+        self.input_shape = None  # 重置为动态输入
         return result
 
     def create_rectangle_shape(

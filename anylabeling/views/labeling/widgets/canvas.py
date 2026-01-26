@@ -663,7 +663,7 @@ class Canvas(
                 self.setStatusTip(self.toolTip())
                 self.override_cursor(CURSOR_GRAB)
                 # [Feature] Automatically highlight shape when the mouse is moved inside it
-                if self.h_shape_is_hovered:
+                if self.h_shape_is_hovered and shape.label != AutoLabelingMode.ROI:
                     group_mode = (
                         int(ev.modifiers()) == QtCore.Qt.ControlModifier
                     )
@@ -1448,6 +1448,9 @@ class Canvas(
             for shape in self.shapes:
                 if not shape.visible:
                     continue
+                # ROI 是临时显示框：不要走 mask（mask 不用 fill_color）
+                if getattr(shape, "label", None) == AutoLabelingMode.ROI:
+                    continue
                 if shape.shape_type not in [
                     "polygon",
                     "rectangle",
@@ -1722,13 +1725,13 @@ class Canvas(
                         continue
                     rect = QtCore.QRect(
                         int(bbox.x()),
-                        int(bbox.y()),
+                        int(bbox.y()-rect_height),
                         rect_width,
                         rect_height,
                     )
                     text_pos = QtCore.QPoint(
                         int(bbox.x() + padding_x),
-                        int(bbox.y() + rect_height - padding_y - fm.descent()),
+                        int(bbox.y() - padding_y - fm.descent()),
                     )
                 elif shape.shape_type == "circle":
                     points = shape.points

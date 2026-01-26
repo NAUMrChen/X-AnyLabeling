@@ -350,3 +350,5 @@
   config_file: ":/yolox_s.yaml"
 - model_name: "yolo26_det_track-r20260125"
   config_file: ":/yolo26_det_botsort.yaml"
+- model_name: "match_template-r20260126"
+  config_file: ":/match_template.yaml"

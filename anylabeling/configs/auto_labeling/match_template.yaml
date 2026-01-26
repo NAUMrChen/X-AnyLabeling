@@ -1,0 +1,6 @@
+type: match_template
+name: match_template-r20260126
+provider: MrChen
+display_name: match_template
+model_path: null  # local path or model hub ID
+

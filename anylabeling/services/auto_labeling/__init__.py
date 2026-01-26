@@ -79,6 +79,7 @@ _CUSTOM_MODELS = [
     "deimv2",
     "yolo26",
     "yolo26_det_track",
+    "match_template",
 ]
 
 
@@ -176,6 +177,7 @@ _AUTO_LABELING_RESET_TRACKER_MODELS = [
     "yolo11_obb_track",
     "yolo11_pose_track",
     "yolo26_det_track",
+    "match_template",   
 ]
 
 
@@ -229,6 +231,7 @@ _AUTO_LABELING_CONF_MODELS = [
     "yoloe",
     "grounding_sam2",
     "yolo26_det_track",
+    "match_template",
 ]
 
 
@@ -319,6 +322,7 @@ _AUTO_LABELING_PRESERVE_EXISTING_ANNOTATIONS_STATE_MODELS = [
     "segment_anything_2_video",
     "yolo26",
     "yolo26_det_track",
+    "match_template",
 ]
 
 
