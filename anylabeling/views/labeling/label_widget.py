@@ -7,9 +7,9 @@ import os.path as osp
 import re
 import shutil
 from typing import Optional
+import threading
+from collections import OrderedDict
 
-import cv2
-import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtGui import QFontMetrics
@@ -83,7 +83,30 @@ from .widgets import (
 LABEL_COLORMAP = utils.label_colormap()
 LABEL_OPACITY = 128
 
+class _ImagePrefetchSignals(QtCore.QObject):
+    finished = QtCore.pyqtSignal(str, QtGui.QImage, object)  # path, qimage, bytes|None
+    failed = QtCore.pyqtSignal(str, str)  # path, error
+class _ImagePrefetchWorker(QtCore.QRunnable):
+    """后台读取 + 解码图片（不能创建 QPixmap，只能创建 QImage）。"""
 
+    def __init__(self, path: str, need_bytes: bool = True):
+        super().__init__()
+        self.path = str(path)
+        self.need_bytes = bool(need_bytes)
+        self.signals = _ImagePrefetchSignals()
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            # 读 bytes（兼容你现有的 load_image_file 行为）
+            data = LabelFile.load_image_file(self.path)
+            img = QtGui.QImage.fromData(data)
+            if img.isNull():
+                raise RuntimeError("QImage is null (decode failed)")
+            self.signals.finished.emit(self.path, img, data if self.need_bytes else None)
+        except Exception as e:
+            self.signals.failed.emit(self.path, str(e))
+            
 class LabelingWidget(LabelDialog):
     """The main widget for labeling images"""
 
@@ -133,7 +156,16 @@ class LabelingWidget(LabelDialog):
         self.select_loop_count = -1
         self.digit_to_label = None
         self.drawing_digit_shortcuts = self._config.get("digit_shortcuts", {})
-
+        
+        self._image_cache_lock = threading.Lock()
+        self._image_cache = OrderedDict()  # path -> (QImage, bytes|None)
+        self._image_cache_max = int(self._config.get("image_cache_size", 30))
+        self._prefetch_enabled = bool(self._config.get("prefetch_images", True))
+        self._prefetch_count = int(self._config.get("prefetch_count", 10))
+        self._prefetch_pool = QtCore.QThreadPool.globalInstance()
+        self._prefetch_pool.setMaxThreadCount(int(self._config.get("prefetch_threads", 1)))
+        self._prefetch_inflight = set()
+        
         # set default shape colors
         Shape.line_color = QtGui.QColor(*self._config["shape"]["line_color"])
         Shape.fill_color = QtGui.QColor(*self._config["shape"]["fill_color"])
@@ -4896,6 +4928,73 @@ class LabelingWidget(LabelDialog):
         if next_files:
             self.next_files_changed.emit(next_files)
 
+    def _cache_get_image(self, path: str):
+        path = str(path)
+        with self._image_cache_lock:
+            v = self._image_cache.get(path)
+            if v is None:
+                return None
+            # LRU touch
+            self._image_cache.move_to_end(path, last=True)
+            return v  # (QImage, bytes|None)
+
+    def _cache_put_image(self, path: str, qimage: QtGui.QImage, data):
+        path = str(path)
+        if qimage is None or qimage.isNull():
+            return
+        with self._image_cache_lock:
+            self._image_cache[path] = (qimage, data)
+            self._image_cache.move_to_end(path, last=True)
+            while len(self._image_cache) > max(1, self._image_cache_max):
+                self._image_cache.popitem(last=False)
+
+    def _schedule_prefetch_around_current(self):
+        """后台预取当前图的前/后若干张，加速连续切换。"""
+        if not self._prefetch_enabled or not self.image_list or not self.filename:
+            return
+        if str(self.filename) not in self.fn_to_index:
+            return
+
+        cur = self.fn_to_index[str(self.filename)]
+        total = len(self.image_list)
+        candidates = []
+
+        # 下一张优先
+        for k in range(1, self._prefetch_count + 1):
+            i = cur + k
+            if 0 <= i < total:
+                candidates.append(self.image_list[i])
+
+        # 再预取上一张
+        for k in range(1, max(1, self._prefetch_count // 2) + 1):
+            i = cur - k
+            if 0 <= i < total:
+                candidates.append(self.image_list[i])
+
+        for p in candidates:
+            p = str(p)
+            if self._cache_get_image(p) is not None:
+                continue
+            if p in self._prefetch_inflight:
+                continue
+
+            self._prefetch_inflight.add(p)
+            worker = _ImagePrefetchWorker(p, need_bytes=True)
+            worker.signals.finished.connect(self._on_prefetch_finished)
+            worker.signals.failed.connect(self._on_prefetch_failed)
+            self._prefetch_pool.start(worker)
+
+    @pyqtSlot(str, QtGui.QImage, object)
+    def _on_prefetch_finished(self, path: str, qimage: QtGui.QImage, data):
+        self._prefetch_inflight.discard(str(path))
+        self._cache_put_image(path, qimage, data)
+
+    @pyqtSlot(str, str)
+    def _on_prefetch_failed(self, path: str, err: str):
+        self._prefetch_inflight.discard(str(path))
+        # 失败不弹窗，避免刷屏；需要排查可打开日志
+        logger.debug(f"Prefetch failed: {path} -> {err}")
+
     def load_file(self, filename=None):  # noqa: C901
         """Load the specified file, or the last opened file if None."""
 
@@ -4977,19 +5076,24 @@ class LabelingWidget(LabelDialog):
             )
             self.shape_text_edit.textChanged.connect(self.shape_text_changed)
         else:
-            self.image_data = LabelFile.load_image_file(filename)
-            if self.image_data:
+            # ✅ 优先走缓存：避免重复读盘+解码
+            cached = self._cache_get_image(filename)
+            if cached is not None:
+                cached_img, cached_data = cached
                 self.image_path = filename
-            self.label_file = None
+                self.image_data = cached_data  # bytes
+                image = cached_img
+                self.label_file = None
+            else:
+                self.image_data = LabelFile.load_image_file(filename)
+                if self.image_data:
+                    self.image_path = filename
+                self.label_file = None
+                image = QtGui.QImage.fromData(self.image_data)
 
-        # Reset the label loop count
-        self.label_loop_count = -1
-        self.select_loop_count = -1
-
-        # TODO(jack): icc profile issue warning
-        # - qt.gui.icc: fromIccProfile: failed minimal tag size sanity
-        # - qt.gui.icc: fromIccProfile: invalid tag offset alignment
-        image = QtGui.QImage.fromData(self.image_data)
+        # ✅ 若标签文件分支也可缓存（可选）：这里统一确保 image 已有
+        if "image" not in locals():
+            image = QtGui.QImage.fromData(self.image_data)
 
         if image.isNull():
             formats = [
@@ -5005,6 +5109,7 @@ class LabelingWidget(LabelDialog):
             )
             self.status(self.tr("Error reading %s") % filename)
             return False
+        self._cache_put_image(filename, image, self.image_data)
         self.image = image
         self.filename = filename
 
@@ -5116,6 +5221,7 @@ class LabelingWidget(LabelDialog):
         self.toggle_actions(True)
         self.canvas.setFocus()
         self.update_thumbnail_display()
+        self._schedule_prefetch_around_current()
         return True
 
     # QT Overload

@@ -503,8 +503,14 @@ class YOLO(Model):
             match_method = getattr(cv2, self.config.get("match_method", "TM_CCOEFF_NORMED"), cv2.TM_CCOEFF_NORMED)
             match_threshold = float(self.config.get("match_threshold", 0.6))
 
-            shapes = []
-            for t in templates:
+            # 1) 先得到 det 结果（每个模板一个最佳匹配框）
+            det_boxes = []
+            det_scores = []
+            det_class_ids = []  # 用模板索引作为 class_id，便于恢复 label/gid
+            template_labels = []
+            template_gids = []
+
+            for idx, t in enumerate(templates):
                 tmpl = None
                 label = "object"
                 gid = None
@@ -518,22 +524,21 @@ class YOLO(Model):
                 except Exception:
                     tmpl = None
 
-                if tmpl is None:
-                    continue
-                if not isinstance(tmpl, np.ndarray) or tmpl.size == 0:
+                template_labels.append(str(label) if label is not None else "object")
+                template_gids.append(gid)
+
+                if tmpl is None or (not isinstance(tmpl, np.ndarray)) or tmpl.size == 0:
                     continue
 
-                tmpl_img = tmpl
-                if tmpl_img.ndim == 3:
-                    tmpl_gray = cv2.cvtColor(tmpl_img, cv2.COLOR_RGB2GRAY)
+                if tmpl.ndim == 3:
+                    tmpl_gray = cv2.cvtColor(tmpl, cv2.COLOR_RGB2GRAY)
                 else:
-                    tmpl_gray = tmpl_img
+                    tmpl_gray = tmpl
 
                 th, tw = tmpl_gray.shape[:2]
                 if th < 2 or tw < 2:
                     continue
                 if search_gray.shape[0] < th or search_gray.shape[1] < tw:
-                    # 模板比搜索区域大，跳过
                     continue
 
                 try:
@@ -556,25 +561,70 @@ class YOLO(Model):
                 y1 = max(0, min(y1, full_h - 1))
                 x2 = max(0, min(x2, full_w))
                 y2 = max(0, min(y2, full_h))
-
                 if (x2 - x1) < 2 or (y2 - y1) < 2:
                     continue
 
+                det_boxes.append([float(x1), float(y1), float(x2), float(y2)])
+                det_scores.append(float(maxVal))
+                det_class_ids.append(int(idx))
+
+            if not det_boxes:
+                return AutoLabelingResult([], replace=self.replace)
+
+            det_boxes = np.asarray(det_boxes, dtype=np.float32)
+            det_scores = np.asarray(det_scores, dtype=np.float32).reshape(-1, 1)
+            det_class_ids = np.asarray(det_class_ids, dtype=np.float32).reshape(-1, 1)
+
+            # 2) tracker：用检测结果更新，得到 tracks（xyxy + track_id + score + class_id）
+            boxes = det_boxes
+            scores = det_scores
+            class_ids = det_class_ids
+            track_ids = np.zeros((len(boxes), 1), dtype=np.float32)
+
+            if self.tracker is not None and len(boxes) > 0:
+                try:
+                    tracks = self.tracker.update(
+                        scores.flatten(),
+                        xyxy2xywh(boxes),
+                        class_ids.flatten(),
+                        full_img,  # 与 det 分支保持一致：传整图用于外观特征
+                    )
+                    if tracks is not None and len(tracks) > 0:
+                        # det 模式 tracker 输出格式与下面一致（参照你 det 分支的解析）
+                        boxes = tracks[:, :4].astype(np.float32, copy=False)
+                        track_ids = tracks[:, 4:5].astype(np.float32, copy=False)
+                        scores = tracks[:, 5:6].astype(np.float32, copy=False)
+                        class_ids = tracks[:, 6:7].astype(np.float32, copy=False)
+                except Exception as e:
+                    logger.warning(f"Tracker update failed in match_template: {e}")
+
+            # 3) 生成 shapes（优先使用 track_id 作为 group_id；无 tracker 则用模板 gid）
+            shapes = []
+            for box, score, cid, tid in zip(boxes, scores, class_ids, track_ids):
+                x1, y1, x2, y2 = [float(v) for v in box]
+                class_idx = int(float(cid)) if cid is not None else 0
+                class_idx = max(0, min(class_idx, len(template_labels) - 1))
+
                 shape = Shape(flags={})
-                shape.add_point(QtCore.QPointF(float(x1), float(y1)))
-                shape.add_point(QtCore.QPointF(float(x2), float(y1)))
-                shape.add_point(QtCore.QPointF(float(x2), float(y2)))
-                shape.add_point(QtCore.QPointF(float(x1), float(y2)))
+                shape.add_point(QtCore.QPointF(x1, y1))
+                shape.add_point(QtCore.QPointF(x2, y1))
+                shape.add_point(QtCore.QPointF(x2, y2))
+                shape.add_point(QtCore.QPointF(x1, y2))
                 shape.shape_type = "rectangle"
                 shape.closed = True
-                shape.label = str(label) if label is not None else "object"
-                shape.score = float(maxVal)
+                shape.label = template_labels[class_idx]
+                shape.score = float(score) if score is not None else 0.0
                 shape.selected = False
-                if gid is not None:
-                    try:
-                        shape.group_id = int(gid)
-                    except Exception:
-                        pass
+
+                if self.tracker is not None and tid is not None and float(tid) > 0:
+                    shape.group_id = int(float(tid))
+                else:
+                    gid = template_gids[class_idx]
+                    if gid is not None:
+                        try:
+                            shape.group_id = int(gid)
+                        except Exception:
+                            pass
 
                 shapes.append(shape)
 
