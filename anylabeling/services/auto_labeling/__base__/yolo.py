@@ -568,7 +568,51 @@ class YOLO(Model):
                 det_scores.append(float(maxVal))
                 det_class_ids.append(int(idx))
 
+            # ✅ 新增：无检测时用 tracker 预测结果返回
             if not det_boxes:
+                if self.tracker is not None:
+                    try:
+                        empty_scores = np.zeros((0,), dtype=np.float32)
+                        empty_boxes = np.zeros((0, 4), dtype=np.float32)
+                        empty_class = np.zeros((0,), dtype=np.float32)
+                        tracks = self.tracker.update(
+                            empty_scores,
+                            xyxy2xywh(empty_boxes),
+                            empty_class,
+                            full_img,
+                        )
+                        if tracks is not None and len(tracks) > 0:
+                            boxes = tracks[:, :4].astype(np.float32, copy=False)
+                            track_ids = tracks[:, 4:5].astype(np.float32, copy=False)
+                            scores = tracks[:, 5:6].astype(np.float32, copy=False)
+                            class_ids = tracks[:, 6:7].astype(np.float32, copy=False)
+
+                            shapes = []
+                            for box, score, cid, tid in zip(boxes, scores, class_ids, track_ids):
+                                x1, y1, x2, y2 = [float(v) for v in box]
+                                class_idx = int(float(cid)) if cid is not None else 0
+                                if class_idx < 0 or class_idx >= len(template_labels):
+                                    label = "object"
+                                else:
+                                    label = template_labels[class_idx]
+
+                                shape = Shape(flags={})
+                                shape.add_point(QtCore.QPointF(x1, y1))
+                                shape.add_point(QtCore.QPointF(x2, y1))
+                                shape.add_point(QtCore.QPointF(x2, y2))
+                                shape.add_point(QtCore.QPointF(x1, y2))
+                                shape.shape_type = "rectangle"
+                                shape.closed = True
+                                shape.label = label
+                                shape.score = float(score) if score is not None else 0.0
+                                shape.selected = False
+                                if tid is not None and float(tid) > 0:
+                                    shape.group_id = int(float(tid))
+                                shapes.append(shape)
+
+                            return AutoLabelingResult(shapes, replace=self.replace)
+                    except Exception as e:
+                        logger.warning(f"Tracker update (no dets) failed in match_template: {e}")
                 return AutoLabelingResult([], replace=self.replace)
 
             det_boxes = np.asarray(det_boxes, dtype=np.float32)

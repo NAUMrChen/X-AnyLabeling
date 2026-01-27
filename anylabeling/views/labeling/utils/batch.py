@@ -331,13 +331,17 @@ def process_next_image(self, progress_dialog, batch=True):
         while (self.image_index <= end_i) and (self.image_index < total_images) and (not self.cancel_processing):
             image_file = self.image_list[self.image_index]
 
-            # ✅ UI 不要卡死（吸收 origin/main）
             QApplication.processEvents()
 
             model_type = self.auto_labeling_widget.model_manager.loaded_model_config["type"]
             batch_processing_mode = "default"
 
-            # ✅ 新增：match_template 走自定义批处理（逐张 load + 传 templates）
+            # ✅ 批处理时若要显示框，确保当前图被加载（非视频模式）
+            if batch and model_type not in _BATCH_PROCESSING_VIDEO_MODELS:
+                self.filename = image_file
+                self.load_file(self.filename)
+
+            # ✅ match_template 自定义分支
             if model_type == "match_template":
                 templates = getattr(self, "_batch_templates", None)
                 if not templates:
@@ -345,10 +349,6 @@ def process_next_image(self, progress_dialog, batch=True):
                         self.tr("模板匹配批处理失败：未找到模板，请先在当前图像选中已标注框。")
                     )
                     break
-
-                # 逐张加载，确保 self.image / self.image_path 正确
-                self.filename = image_file
-                self.load_file(self.filename)
 
                 roi = getattr(self, "_batch_roi", None)
                 model = self.auto_labeling_widget.model_manager.loaded_model_config.get("model", None)
@@ -364,6 +364,11 @@ def process_next_image(self, progress_dialog, batch=True):
                     roi=roi,
                     templates=templates,
                 )
+
+                # ✅ 批处理显示标注框
+                if batch:
+                    self.new_shapes_from_auto_labeling(auto_labeling_result)
+                    QApplication.processEvents()
 
                 if batch:
                     save_auto_labeling_result(self, image_file, auto_labeling_result)
