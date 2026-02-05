@@ -5,6 +5,7 @@ display_name: YOLO26s
 model_path: E:\Project\ultralytics\runs\detect\runs\train\exp17\weights\best.onnx
 iou_threshold: 0.70
 conf_threshold: 0.25
+max_det: 300
 classes:
   - mt
   - uk

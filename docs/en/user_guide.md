@@ -21,6 +21,7 @@ This guide provides comprehensive instructions for using X-AnyLabeling, covering
       * [3.3 Shape Display](#33-shape-display)
       * [3.4 Crosshair Customization](#34-crosshair-customization)
       * [3.5 Navigator](#35-navigator)
+      * [3.6 Compare View](#36-compare-view)
    * [4. Annotation Formats (Import/Export)](#4-annotation-formats-importexport)
       * [4.1 YOLO Format](#41-yolo-format)
       * [4.2 VOC Format](#42-voc-format)
@@ -336,6 +337,28 @@ At the bottom of the navigator, you can precisely set the zoom ratio through the
 
 This feature is particularly useful when working with ultra-high resolution images, allowing you to maintain precise local operations while keeping the global perspective.
 
+### 3.6 Compare View
+
+<p align="center">
+  <img src="../../assets/resources/compare_view.png" alt="Compare-View">
+</p>
+
+X-AnyLabeling provides a Compare View feature that allows you to compare two images side-by-side using a split-screen interface. This is particularly useful for:
+
+- **Infrared + Visible Light**: Comparing thermal and RGB images to identify targets that are clearer in different spectrums.
+- **Mask Preview**: Viewing segmentation results overlaid on the original image in real-time.
+- **Super-Resolution**: Comparing enhanced images with their original versions.
+
+**How to Use:**
+
+1. Open an image directory and load an image.
+2. Click `File` > `Compare View` (or press `Ctrl+Alt+C`) to open the compare directory selector.
+3. Select a directory containing comparison images with matching filenames (same base name, can have different extensions).
+4. Use the slider at the bottom to adjust the split position, or hold `Shift` and scroll the mouse wheel to move the divider.
+5. Click the close button (×) on the slider to exit Compare View.
+
+> **Note:** The comparison image must have the same dimensions as the original image. If the sizes do not match, a warning will be displayed in the status bar.
+
 ## 4. Annotation Formats (Import/Export)
 
 `X-AnyLabeling` supports importing and exporting annotations in various standard formats. This section provides a guide for each. Access import/export functions via the `File` menu or dedicated toolbar buttons (e.g., `Import Annotations`, `Export Annotations`).
@@ -349,7 +372,7 @@ This feature is particularly useful when working with ultra-high resolution imag
 
 ### 4.1 YOLO Format
 
-Supports YOLOv5/v8 format (`*.txt`) labels for object detection, instance segmentation, rotated bounding boxes, and keypoint detection.
+Supports YOLO format (`*.txt`) labels for object detection, instance segmentation, rotated bounding boxes, and keypoint detection.
 
 **Configuration:**
 - **Detection/Segmentation/Rotation:** Prepare a `classes.txt` file listing class names, one per line (0-indexed). See example: [`classes.txt`](../../assets/classes.txt).
@@ -778,6 +801,7 @@ The default keyboard shortcuts are listed below. You can customize these in the 
 | `↑`, `→`, `↓`, `←`    | Move Selection (Arrow Keys)                      | Nudge selected shape(s)                    |
 | `z`, `x`, `c`, `v`    | Rotate Selection                                 | Rotates selected shape(s) (if applicable)  |
 | `F9`                  | Show/Hide Navigator                              | Toggle navigator window                    |
+| `Ctrl+Alt+c`          | Toggle Compare View                              | Split-screen image comparison              |
 
 ### 7.2 Custom Label Colors
 
