@@ -124,7 +124,6 @@ class LabelingWidget(LabelDialog):
         output_file=None,
         output_dir=None,
     ):
-        super().__init__(parent)
         self.parent = parent
         if output is not None:
             logger.warning(
@@ -190,6 +189,7 @@ class LabelingWidget(LabelDialog):
         # Set line width from config file
         Shape.line_width = self._config["shape"]["line_width"]
 
+        super(LabelDialog, self).__init__()
         # Whether we need to save or not.
         self.dirty = False
 
