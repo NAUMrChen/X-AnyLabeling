@@ -76,9 +76,16 @@
 
 ## 🥳 新功能
 
+<video src="https://github.com/user-attachments/assets/493183fd-6cbe-45fb-9808-ec2b0af7a0f9" width="100%" controls>
+</video>
+
 <video src="https://github.com/user-attachments/assets/4a676ebf-d2ae-4327-b078-8e63a5323793" width="100%" controls>
 </video>
 
+- 新增 [PP-DocLayoutV3](./examples/optical_character_recognition/document_layout_analysis/README.md)，支持多点定位（四边形/多边形）和逻辑阅读顺序预测
+- 新增 [PaddleOCR-VL-1.5](./examples/optical_character_recognition/multi_task/README.md)，支持 OCR、表格识别、公式识别、图表识别、文本检测与识别及印章识别
+- 新增[YOLO26](https://github.com/ultralytics/ultralytics)系列模型，支持目标检测、实例分割、姿态估计和旋转检测
+- 新增对比视图功能，支持分屏图像对比，适用于红外/可见光融合、掩码预览、图像超分等场景 [[教程](./docs/zh_cn/user_guide.md#36-对比视图)]
 - 新增[YOLO26](https://github.com/ultralytics/ultralytics)目标检测模型
 - 新增多模态大型语言模型[Rex-Omni](https://github.com/IDEA-Research/Rex-Omni)，支持目标检测、关键点、指代、OCR和视觉提示等多种视觉任务 [[教程](./examples/vision_language/rexomni/README.md)]
 - 新增强大的文件搜索功能，支持文本搜索、正则表达式搜索和属性搜索 [[教程](./docs/zh_cn/user_guide.md#25-搜索图片)]
@@ -99,7 +106,7 @@
 <img src="https://github.com/user-attachments/assets/c65db18f-167b-49e8-bea3-fcf4b43a8ffd" width="100%" />
 
 - 支持远程推理服务。
-- 支持`GPU`加速推理。
+- 支持`GPU`、`FFmpeg`加速推理。
 - 支持一键预测所有图像。
 - 支持`图像`和`视频`处理。
 - 支持自定义模型和二次开发。
@@ -115,16 +122,16 @@
 | :--- | :--- |
 | 🖼️ **图像分类** | YOLOv5-Cls, YOLOv8-Cls, YOLO11-Cls, InternImage, PULC |
 | 🎯 **目标检测** | YOLOv5/6/7/8/9/10, YOLO11/12/26, YOLOX, YOLO-NAS, D-FINE, DAMO-YOLO, Gold_YOLO, RT-DETR, RF-DETR, DEIMv2 |
-| 🖌️ **实例分割** | YOLOv5-Seg, YOLOv8-Seg, YOLO11-Seg, Hyper-YOLO-Seg, RF-DETR-Seg |
-| 🏃 **姿态估计** | YOLOv8-Pose, YOLO11-Pose, DWPose, RTMO |
+| 🖌️ **实例分割** | YOLOv5-Seg, YOLOv8-Seg, YOLO11-Seg, YOLO26-Seg, Hyper-YOLO-Seg, RF-DETR-Seg |
+| 🏃 **姿态估计** | YOLOv8-Pose, YOLO11-Pose, YOLO26-Pose, DWPose, RTMO |
 | 👣 **目标跟踪** | Bot-SORT, ByteTrack, SAM2/3-Video |
-| 🔄 **旋转目标检测** | YOLOv5-Obb, YOLOv8-Obb, YOLO11-Obb |
+| 🔄 **旋转目标检测** | YOLOv5-Obb, YOLOv8-Obb, YOLO11-Obb, YOLO26-Obb |
 | 📏 **深度估计** | Depth Anything |
 | 🧩 **分割一切** | SAM 1/2/3, SAM-HQ, SAM-Med2D, EdgeSAM, EfficientViT-SAM, MobileSAM |
 | ✂️ **图像抠图** | RMBG 1.4/2.0 |
 | 💡 **候选框提取** | UPN |
 | 🏷️ **图像标记** | RAM, RAM++ |
-| 📄 **光学字符识别** | PP-OCRv4, PP-OCRv5 |
+| 📄 **光学字符识别** | PP-OCRv4, PP-OCRv5, PP-DocLayoutV3, PaddleOCR-VL-1.5 |
 | 🗣️ **视觉基础模型** | Rex-Omni, Florence2 |
 | 👁️ **视觉语言模型** | Qwen3-VL, Gemini, ChatGPT |
 | 🛣️ **车道线检测** | CLRNet |

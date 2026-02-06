@@ -1,5 +1,52 @@
 # X-AnyLabeling Changelog
 
+## `v3.3.9` (Feb 02, 2026)
+
+### 🚀 New Features
+
+- Add PP-DocLayoutV3 and PaddleOCR-VL-1.5 model support (#1226)
+
+### 🐛 Bug Fixes
+
+- Fix label decoding issues in Grounding DINO series models (#1286)
+- Clear image description when loading unlabeled images
+
+### 🛠️ Improvements
+
+- Update README and model zoo documentation
+- Add license notice for Ultralytics under AGPL-3.0
+
+### 🌟 Contributors
+
+A total of 1 developer contributed to this release.
+
+Thank @CVHub520
+
+## `v3.3.8` (Jan 28, 2026)
+
+### 🚀 New Features
+
+- Add YOLO26 seg/pose/obb model (#1226)
+
+### 🌟 Contributors
+
+A total of 2 developer contributed to this release.
+
+Thank @iPengXPro, @CVHub520
+
+## `v3.3.7` (Jan 25, 2026)
+
+### 🚀 New Features
+
+- Add automatic skip detection support for batch processing mode in PPOCR models (#687)
+- Introduce Compare View feature for side-by-side image comparison, enhancing usability for tasks such as infrared/visible fusion, mask preview, and super-resolution (#1269)
+
+### 🌟 Contributors
+
+A total of 2 developer contributed to this release.
+
+Thank @xy200303, @CVHub520
+
 ## `v3.3.6` (Jan 24, 2026)
 
 ### 🚀 New Features

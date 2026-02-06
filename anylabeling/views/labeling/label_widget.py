@@ -60,6 +60,8 @@ from .widgets import (
     Canvas,
     ChatbotDialog,
     ClassifierDialog,
+    CompareViewManager,
+    CompareViewSlider,
     VQADialog,
     CrosshairSettingsDialog,
     FileDialogPreview,
@@ -122,6 +124,7 @@ class LabelingWidget(LabelDialog):
         output_file=None,
         output_dir=None,
     ):
+        super().__init__(parent)
         self.parent = parent
         if output is not None:
             logger.warning(
@@ -186,8 +189,6 @@ class LabelingWidget(LabelDialog):
         Shape.point_size = self._config["shape"]["point_size"]
         # Set line width from config file
         Shape.line_width = self._config["shape"]["line_width"]
-
-        super(LabelDialog, self).__init__()
 
         # Whether we need to save or not.
         self.dirty = False
@@ -333,6 +334,23 @@ class LabelingWidget(LabelDialog):
             mask=self._config["canvas"].get("mask", {}),
         )
         self.canvas.zoom_request.connect(self.zoom_request)
+
+        # Compare view support
+        self.compare_view_manager = CompareViewManager(self.canvas, self)
+        self.compare_view_manager.status_message.connect(self.status)
+        self.compare_view_slider = CompareViewSlider(self)
+        self.compare_view_slider.position_changed.connect(
+            self.compare_view_manager.set_split_position
+        )
+        self.compare_view_slider.close_requested.connect(
+            self.close_compare_view
+        )
+        self.compare_view_manager.compare_closed.connect(
+            self.compare_view_slider.hide_slider
+        )
+        self.canvas.split_position_changed.connect(
+            self.compare_view_slider.set_position
+        )
 
         scroll_area = QScrollArea()
         scroll_area.setWidget(self.canvas)
@@ -482,6 +500,15 @@ class LabelingWidget(LabelDialog):
             shortcuts["delete_image_file"],
             "delete",
             self.tr("Delete current image file"),
+            enabled=True,
+        )
+
+        toggle_compare_view = action(
+            self.tr("Compare View"),
+            self.toggle_compare_view,
+            shortcuts.get("toggle_compare_view"),
+            "compare",
+            self.tr("Toggle split-screen compare view"),
             enabled=True,
         )
 
@@ -1739,6 +1766,7 @@ class LabelingWidget(LabelDialog):
                 open_prev_unchecked_image,
                 opendir,
                 openvideo,
+                toggle_compare_view,
                 self.menus.recent_files,
                 save,
                 save_as,
@@ -2015,6 +2043,7 @@ class LabelingWidget(LabelDialog):
         central_layout.addSpacing(5)
         central_layout.addWidget(self.auto_labeling_widget)
         central_layout.addWidget(scroll_area)
+        central_layout.addWidget(self.compare_view_slider)
         layout.addItem(central_layout)
 
         # Save central area for resize
@@ -2821,6 +2850,7 @@ class LabelingWidget(LabelDialog):
         self.label_file = None
         self.other_data = {}
         self.canvas.reset_state()
+        self.compare_view_manager.reset()
         self.label_filter_combobox.text_box.clear()
         self.gid_filter_combobox.gid_box.clear()
         self.select_toggle_button.setChecked(False)
@@ -3253,7 +3283,8 @@ class LabelingWidget(LabelDialog):
             self.clear_auto_labeling_marks()
             self.auto_labeling_widget.set_auto_labeling_mode(None)
 
-        self.set_text_editing(False)
+        if not edit:
+            self.set_text_editing(False)
 
         self.canvas.set_editing(edit)
         self.canvas.create_mode = create_mode
@@ -5090,6 +5121,12 @@ class LabelingWidget(LabelDialog):
                     self.image_path = filename
                 self.label_file = None
                 image = QtGui.QImage.fromData(self.image_data)
+            self.label_file = None
+            self.shape_text_edit.textChanged.disconnect()
+            self.shape_text_edit.setPlainText("")
+            self.shape_text_edit.textChanged.connect(self.shape_text_changed)
+        self.shape_text_label.setText(self.tr("Image Description"))
+        self.shape_text_edit.setDisabled(False)
 
         # ✅ 若标签文件分支也可缓存（可选）：这里统一确保 image 已有
         if "image" not in locals():
@@ -5222,6 +5259,8 @@ class LabelingWidget(LabelDialog):
         self.canvas.setFocus()
         self.update_thumbnail_display()
         self._schedule_prefetch_around_current()
+        if self.compare_view_manager.is_active():
+            self.compare_view_manager.load_compare_for_file(self.filename)
         return True
 
     # QT Overload
@@ -5551,6 +5590,48 @@ class LabelingWidget(LabelDialog):
         self.canvas.setEnabled(False)
         self.actions.save_as.setEnabled(False)
 
+    def toggle_compare_view(self):
+        """Toggle the compare view on or off."""
+        if self.compare_view_manager.is_active():
+            self.close_compare_view()
+            return
+
+        if not self.filename:
+            self.status(self.tr("Please open an image first"), 3000)
+            return
+
+        compare_dir = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            self.tr("Select Compare Image Directory"),
+            "",
+            QtWidgets.QFileDialog.ShowDirsOnly
+            | QtWidgets.QFileDialog.DontResolveSymlinks,
+        )
+        if not compare_dir:
+            return
+
+        if not self.compare_view_manager.set_compare_directory(compare_dir):
+            self.status(self.tr("Invalid compare directory"), 3000)
+            return
+
+        self.compare_view_manager.load_compare_for_file(self.filename)
+        self.compare_view_slider.show_slider()
+
+    def close_compare_view(self, confirm=True):
+        """Close the compare view."""
+        if confirm:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                self.tr("Close Compare View"),
+                self.tr("Are you sure you want to close the compare view?"),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No,
+            )
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
+        self.compare_view_manager.close()
+        self.compare_view_slider.hide_slider()
+
     def get_label_file(self):
         if self.label_file:
             return self.label_file.filename
@@ -5834,6 +5915,9 @@ class LabelingWidget(LabelDialog):
         if not self.may_continue() or not dirpath:
             return
 
+        if self.compare_view_manager.is_active():
+            self.close_compare_view(confirm=False)
+
         self.last_open_dir = dirpath
         self.filename = None
         self.file_list_widget.clear()
@@ -6003,7 +6087,9 @@ class LabelingWidget(LabelDialog):
         if auto_labeling_result.description:
             description = auto_labeling_result.description
             self.shape_text_label.setText(self.tr("Image Description"))
+            self.shape_text_edit.textChanged.disconnect()
             self.shape_text_edit.setPlainText(description)
+            self.shape_text_edit.textChanged.connect(self.shape_text_changed)
             self.other_data["description"] = description
             self.shape_text_edit.setDisabled(False)
 
@@ -6249,7 +6335,7 @@ class LabelingWidget(LabelDialog):
                 self.shape_text_label.setText(self.tr("Object Description"))
                 self.shape_text_edit.textChanged.disconnect()
                 self.shape_text_edit.setPlainText(
-                    self.canvas.selected_shapes[0].description
+                    self.canvas.selected_shapes[0].description or ""
                 )
                 self.shape_text_edit.textChanged.connect(
                     self.shape_text_changed
