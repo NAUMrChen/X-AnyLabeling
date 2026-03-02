@@ -459,7 +459,6 @@ def process_next_image(self, progress_dialog, batch=True):
                         self.image,
                         image_file,
                         batch=batch,
-                        roi=roi,
                         existing_shapes=existing_shapes,
                         roi=roi,
                     )
