@@ -5107,6 +5107,11 @@ class LabelingWidget(LabelDialog):
                 self.other_data.get("description", "")
             )
             self.shape_text_edit.textChanged.connect(self.shape_text_changed)
+            if self.image_data:
+                image = QtGui.QImage.fromData(self.image_data)
+            else:
+                self.image_data = LabelFile.load_image_file(self.image_path)
+                image = QtGui.QImage.fromData(self.image_data)
         else:
             # ✅ 优先走缓存：避免重复读盘+解码
             cached = self._cache_get_image(filename)
