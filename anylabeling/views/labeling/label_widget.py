@@ -190,7 +190,6 @@ class LabelingWidget(LabelDialog):
         Shape.line_width = self._config["shape"]["line_width"]
 
         super(LabelDialog, self).__init__()
-
         # Whether we need to save or not.
         self.dirty = False
 
@@ -5128,6 +5127,17 @@ class LabelingWidget(LabelDialog):
                 self.label_file = None
                 image = QtGui.QImage.fromData(self.image_data)
 
+            # 非 label_file：清空描述区
+            self.shape_text_edit.textChanged.disconnect()
+            self.shape_text_edit.setPlainText("")
+            self.shape_text_edit.textChanged.connect(self.shape_text_changed)
+            self.shape_text_label.setText(self.tr("Image Description"))
+            self.shape_text_edit.setDisabled(False)
+
+        # ✅ 若标签文件分支也可缓存（可选）：这里统一确保 image 已有
+        if "image" not in locals():
+            image = QtGui.QImage.fromData(self.image_data)
+
         if image.isNull():
             formats = [
                 f"*.{fmt.data().decode()}"
@@ -5255,10 +5265,8 @@ class LabelingWidget(LabelDialog):
         self.canvas.setFocus()
         self.update_thumbnail_display()
         self._schedule_prefetch_around_current()
-
         if self.compare_view_manager.is_active():
             self.compare_view_manager.load_compare_for_file(self.filename)
-
         return True
 
     # QT Overload

@@ -459,10 +459,16 @@ def process_next_image(self, progress_dialog, batch=True):
                         self.image,
                         image_file,
                         batch=batch,
+                        roi=roi,
                         existing_shapes=existing_shapes,
                         roi=roi,
                     )
                 )
+
+            # ✅ 批处理显示标注框
+            if batch:
+                self.new_shapes_from_auto_labeling(auto_labeling_result)
+                QApplication.processEvents()
 
             if batch:
                 save_auto_labeling_result(self, image_file, auto_labeling_result)
