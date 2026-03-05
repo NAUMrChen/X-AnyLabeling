@@ -1,10 +1,10 @@
 import os
 
-from PyQt5.QtCore import (
+from PyQt6.QtCore import (
     Qt,
     pyqtSignal,
 )
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -13,6 +13,12 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QSpinBox,
 )
+
+from anylabeling.views.labeling.utils.style import (
+    get_cancel_btn_style,
+    get_ok_btn_style,
+)
+from anylabeling.views.labeling.utils.theme import get_theme
 
 
 class BatchProcessDialog(QDialog):
@@ -34,14 +40,13 @@ class BatchProcessDialog(QDialog):
 
     def setup_ui(self):
         """Set up the UI interface"""
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: white;
+        t = get_theme()
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {t["background"]};
                 border-radius: 8px;
-            }
-        """
-        )
+            }}
+        """)
 
         # Main layout
         dialog_layout = QVBoxLayout(self)
@@ -52,15 +57,13 @@ class BatchProcessDialog(QDialog):
         instruction_label = QLabel(
             self.tr("Enter the prompt to apply to all images:")
         )
-        instruction_label.setStyleSheet(
-            """
-            QLabel {
+        instruction_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 14px;
-                color: #374151;
+                color: {t["text"]};
                 font-weight: 500;
-            }
-        """
-        )
+            }}
+        """)
         dialog_layout.addWidget(instruction_label)
 
         # Input box design
@@ -70,39 +73,37 @@ class BatchProcessDialog(QDialog):
                 "Type your prompt here and use `@image` to reference the image."
             )
         )
-        self.batch_message_input.setStyleSheet(
-            """
-            QTextEdit {
-                border: 1px solid #E5E7EB;
+        self.batch_message_input.setStyleSheet(f"""
+            QTextEdit {{
+                border: 1px solid {t["border"]};
                 border-radius: 8px;
-                background-color: #F9FAFB;
-                color: #1F2937;
+                background-color: {t["background_secondary"]};
+                color: {t["text"]};
                 font-size: 14px;
                 line-height: 1.5;
                 padding: 12px;
-            }
-            QTextEdit:focus {
-                border: 1px solid #6366F1;
-            }
-            QScrollBar:vertical {
+            }}
+            QTextEdit:focus {{
+                border: 1px solid {t["primary"]};
+            }}
+            QScrollBar:vertical {{
                 width: 8px;
                 background: transparent;
-            }
-            QScrollBar::handle:vertical {
-                background: #D1D5DB;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {t["scrollbar"]};
                 border-radius: 4px;
                 min-height: 30px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
-            }
-        """
-        )
+            }}
+        """)
         self.batch_message_input.setAcceptRichText(False)
         self.batch_message_input.setMinimumHeight(160)
         self.batch_message_input.setMaximumHeight(200)
         self.batch_message_input.setVerticalScrollBarPolicy(
-            Qt.ScrollBarAsNeeded
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         dialog_layout.addWidget(self.batch_message_input)
 
@@ -113,15 +114,13 @@ class BatchProcessDialog(QDialog):
         settings_container.addStretch()
 
         concurrency_label = QLabel(self.tr("Concurrency:"))
-        concurrency_label.setStyleSheet(
-            """
-            QLabel {
+        concurrency_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 12px;
-                color: #6B7280;
+                color: {t["text_secondary"]};
                 font-weight: 400;
-            }
-        """
-        )
+            }}
+        """)
         settings_container.addWidget(concurrency_label)
 
         self.concurrency_spinbox = QSpinBox()
@@ -131,32 +130,30 @@ class BatchProcessDialog(QDialog):
         tooltip_text = self.tr("Max: {}").format(self.max_concurrency)
         self.concurrency_spinbox.setToolTip(tooltip_text)
         self.concurrency_spinbox.setSuffix(f" / {self.max_concurrency}")
-        self.concurrency_spinbox.setStyleSheet(
-            """
-            QSpinBox {
-                border: 1px solid #E5E7EB;
+        self.concurrency_spinbox.setStyleSheet(f"""
+            QSpinBox {{
+                border: 1px solid {t["border"]};
                 border-radius: 4px;
-                background-color: #FFFFFF;
-                color: #1F2937;
+                background-color: {t["background_secondary"]};
+                color: {t["text"]};
                 font-size: 12px;
                 padding: 4px 8px;
                 min-width: 80px;
                 max-width: 80px;
-            }
-            QSpinBox:focus {
-                border: 1px solid #6366F1;
-                background-color: #F9FAFB;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
+            }}
+            QSpinBox:focus {{
+                border: 1px solid {t["primary"]};
+                background-color: {t["background_secondary"]};
+            }}
+            QSpinBox::up-button, QSpinBox::down-button {{
                 width: 16px;
                 border: none;
                 background: transparent;
-            }
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                background-color: #F3F4F6;
-            }
-        """
-        )
+            }}
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+                background-color: {t["surface_hover"]};
+            }}
+        """)
         settings_container.addWidget(self.concurrency_spinbox)
 
         dialog_layout.addLayout(settings_container)
@@ -167,65 +164,24 @@ class BatchProcessDialog(QDialog):
         button_layout.setSpacing(12)
         button_layout.addStretch()
 
-        # Cancel button
         cancel_btn = QPushButton(self.tr("Cancel"))
-        cancel_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: white;
-                color: #4B5563;
-                border: 1px solid #E5E7EB;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 14px;
-                font-weight: 500;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #F9FAFB;
-                border-color: #D1D5DB;
-            }
-            QPushButton:pressed {
-                background-color: #F3F4F6;
-            }
-        """
-        )
-        cancel_btn.setMinimumHeight(36)
-        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setStyleSheet(get_cancel_btn_style())
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
 
-        # Confirm button
         confirm_btn = QPushButton(self.tr("Confirm"))
-        confirm_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #4F46E5;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 14px;
-                font-weight: 500;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #4338CA;
-            }
-            QPushButton:pressed {
-                background-color: #3730A3;
-            }
-        """
-        )
-        confirm_btn.setMinimumHeight(36)
-        confirm_btn.setCursor(Qt.PointingHandCursor)
+        confirm_btn.setStyleSheet(get_ok_btn_style())
+        confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         confirm_btn.clicked.connect(self.accept)
 
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(confirm_btn)
         dialog_layout.addLayout(button_layout)
 
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowType.FramelessWindowHint
+        )
 
     def center_on_parent(self):
         """Center the dialog on the parent window"""
@@ -245,13 +201,13 @@ class BatchProcessDialog(QDialog):
         """Get the concurrency setting"""
         return self.concurrency_spinbox.value()
 
-    def exec_(self):
-        """Override exec_ method to adjust position before showing the dialog"""
+    def exec(self):
+        """Override exec method to adjust position before showing the dialog"""
         self.adjustSize()
         self.center_on_parent()
-        result = super().exec_()
+        result = super().exec()
 
-        if result == QDialog.Accepted:
+        if result == QDialog.DialogCode.Accepted:
             prompt = self.get_prompt()
             concurrency = self.get_concurrency()
             if prompt:

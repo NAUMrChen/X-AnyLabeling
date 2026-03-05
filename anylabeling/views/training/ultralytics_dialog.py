@@ -7,9 +7,9 @@ import re
 import shutil
 import subprocess
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -65,10 +65,10 @@ class UltralyticsDialog(QDialog):
 
         self.setWindowTitle(DEFAULT_WINDOW_TITLE)
         self.setWindowFlags(
-            Qt.Window
-            | Qt.WindowMinimizeButtonHint
-            | Qt.WindowMaximizeButtonHint
-            | Qt.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
         self.resize(*DEFAULT_WINDOW_SIZE)
         self.setMinimumSize(*DEFAULT_WINDOW_SIZE)
@@ -86,11 +86,11 @@ class UltralyticsDialog(QDialog):
         # Training related attributes
         self.log_redirector = TrainingLogRedirector()
         self.log_redirector.log_signal.connect(
-            self.append_training_log, Qt.QueuedConnection
+            self.append_training_log, Qt.ConnectionType.QueuedConnection
         )
         self.event_redirector = TrainingEventRedirector()
         self.event_redirector.training_event_signal.connect(
-            self.on_training_event, Qt.QueuedConnection
+            self.on_training_event, Qt.ConnectionType.QueuedConnection
         )
         self.training_manager = get_training_manager()
         self.training_manager.callbacks = [
@@ -100,11 +100,11 @@ class UltralyticsDialog(QDialog):
         # Export related attributes
         self.export_log_redirector = ExportLogRedirector()
         self.export_log_redirector.log_signal.connect(
-            self.append_training_log, Qt.QueuedConnection
+            self.append_training_log, Qt.ConnectionType.QueuedConnection
         )
         self.export_event_redirector = ExportEventRedirector()
         self.export_event_redirector.export_event_signal.connect(
-            self.on_export_event, Qt.QueuedConnection
+            self.on_export_event, Qt.ConnectionType.QueuedConnection
         )
         self.export_manager = get_export_manager()
         self.export_manager.callbacks = [
@@ -127,6 +127,7 @@ class UltralyticsDialog(QDialog):
         )
 
         self.init_ui()
+        self.setStyleSheet(get_ultralytics_dialog_style())
         self.refresh_dataset_summary()
 
     def init_ui(self):
@@ -367,7 +368,7 @@ class UltralyticsDialog(QDialog):
             return
 
         project = os.path.join(
-            DEFAULT_PROJECT_DIR, self.selected_task_type.lower()
+            get_default_project_dir(), self.selected_task_type.lower()
         )
         self.config_widgets["project"].setText(project)
         self.config_widgets["project"].setReadOnly(self.project_readonly)
@@ -501,8 +502,10 @@ class UltralyticsDialog(QDialog):
     def init_basic_settings(self, parent_layout):
         group = QGroupBox(self.tr("Basic Settings"))
         layout = QFormLayout(group)
-        layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        layout.setRowWrapPolicy(QFormLayout.DontWrapRows)
+        layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+        )
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
 
         self.config_widgets["project"] = CustomLineEdit()
         selected_task_type = (
@@ -510,7 +513,9 @@ class UltralyticsDialog(QDialog):
             if self.selected_task_type
             else "detect"
         )
-        text_project = os.path.join(DEFAULT_PROJECT_DIR, selected_task_type)
+        text_project = os.path.join(
+            get_default_project_dir(), selected_task_type
+        )
         self.config_widgets["project"].setText(text_project)
         layout.addRow("Project:", self.config_widgets["project"])
 
@@ -563,7 +568,9 @@ class UltralyticsDialog(QDialog):
         self.on_device_changed(self.config_widgets["device"].currentText())
 
         dataset_layout = QHBoxLayout()
-        self.config_widgets["dataset_ratio"] = CustomSlider(Qt.Horizontal)
+        self.config_widgets["dataset_ratio"] = CustomSlider(
+            Qt.Orientation.Horizontal
+        )
         self.config_widgets["dataset_ratio"].setRange(5, 95)
         self.config_widgets["dataset_ratio"].setValue(80)
         self.dataset_ratio_label = QLabel("0.8")
@@ -1043,7 +1050,6 @@ class UltralyticsDialog(QDialog):
                     elif key == "pose_config":
                         if value:
                             self.config_widgets[key].setText(value)
-                            self.on_task_type_selected("pose")
                     elif key == "skip_empty_files":
                         set_widget_value(key, value)
                     else:
@@ -1178,7 +1184,7 @@ class UltralyticsDialog(QDialog):
         try:
             save_config(self.get_current_config())
             template = self.tr("Configuration saved successfully to %s")
-            msg_test = template % SETTINGS_CONFIG_PATH
+            msg_test = template % get_settings_config_path()
             QMessageBox.information(self, self.tr("Success"), msg_test)
         except Exception as e:
             QMessageBox.warning(
@@ -1214,11 +1220,12 @@ class UltralyticsDialog(QDialog):
                         "Yes - Export the existing model directly\n"
                         "No - Continue to retrain (will overwrite)"
                     ),
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.Yes,
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
                 )
 
-                if reply == QMessageBox.Yes:
+                if reply == QMessageBox.StandardButton.Yes:
                     self.current_project_path = project_dir
                     self.training_status = "completed"
                     save_config(config)
@@ -1239,11 +1246,11 @@ class UltralyticsDialog(QDialog):
                 self.tr(
                     "Project directory already exists! Do you want to overwrite it?\nIf not, please manually modify the `Name` field value."
                 ),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
 
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 try:
                     shutil.rmtree(error_message)
                     self.append_training_log(
@@ -1289,10 +1296,10 @@ class UltralyticsDialog(QDialog):
                 self.tr(
                     "Training traces detected. Do you want to reset the training tab?"
                 ),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 self.reset_train_tab()
         elif self.training_status == "stop":
             self.start_training_button.setVisible(True)
@@ -1435,8 +1442,8 @@ class UltralyticsDialog(QDialog):
                         scaled_pixmap = pixmap.scaled(
                             150,
                             150,
-                            Qt.KeepAspectRatio,
-                            Qt.SmoothTransformation,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
                         )
                         image_label.setPixmap(scaled_pixmap)
                         image_label.setText("")
@@ -1548,10 +1555,10 @@ class UltralyticsDialog(QDialog):
                 self,
                 self.tr("Clear Logs"),
                 self.tr("Are you sure you want to clear all training logs?"),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 self.log_display.clear()
 
     def copy_training_logs(self):
@@ -1601,10 +1608,10 @@ class UltralyticsDialog(QDialog):
             image_label = QLabel()
             image_label.setMinimumSize(150, 150)
             image_label.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
             )
             image_label.setStyleSheet(get_image_label_style())
-            image_label.setAlignment(Qt.AlignCenter)
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             image_label.setText(self.tr("No image"))
             image_label.setScaledContents(False)
             image_label.mousePressEvent = (
@@ -1704,11 +1711,11 @@ class UltralyticsDialog(QDialog):
             self,
             self.tr("Confirm Stop"),
             self.tr("Are you sure you want to stop the training?"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             success = self.training_manager.stop_training()
             if success:
                 self.append_training_log(self.tr("Stopping training..."))
@@ -1864,7 +1871,9 @@ class UltralyticsDialog(QDialog):
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
@@ -1930,7 +1939,7 @@ class UltralyticsDialog(QDialog):
             return
 
         export_dialog = ExportFormatDialog(self)
-        if export_dialog.exec_() == QDialog.Accepted:
+        if export_dialog.exec() == QDialog.DialogCode.Accepted:
             export_format = export_dialog.get_selected_format()
             success, message = self.export_manager.start_export(
                 self.current_project_path, export_format

@@ -36,9 +36,20 @@ class LabelConverter:
         self.pose_classes = {}
         if pose_cfg_file:
             with open(pose_cfg_file, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                self.has_visible = data["has_visible"]
-                for class_name, keypoint_name in data["classes"].items():
+                data = yaml.safe_load(f) or {}
+                if not isinstance(data, dict):
+                    raise ValueError(
+                        "Invalid pose config: root node must be a mapping."
+                    )
+
+                classes = data.get("classes")
+                if not isinstance(classes, dict) or not classes:
+                    raise ValueError(
+                        "Invalid pose config: missing or invalid 'classes' mapping."
+                    )
+
+                self.has_visible = data.get("has_visible", True)
+                for class_name, keypoint_name in classes.items():
                     self.pose_classes[class_name] = keypoint_name
                 self.classes = list(self.pose_classes.keys())
             logger.info(f"Loading pose classes: {self.pose_classes}")
@@ -1129,9 +1140,14 @@ class LabelConverter:
             annotations = json.loads(data[1])
             for annotation in annotations:
                 points = annotation["points"]
-                shape_type = (
-                    "rectangle" if is_possible_rectangle(points) else "polygon"
-                )
+                if len(points) == 4:
+                    shape_type = (
+                        "rectangle"
+                        if is_possible_rectangle(points)
+                        else "quadrilateral"
+                    )
+                else:
+                    shape_type = "polygon"
                 shape = {
                     "label": annotation.get("label", "text"),
                     "description": annotation["transcription"],
@@ -2109,7 +2125,12 @@ class LabelConverter:
         prefix = osp.splitext(image_name)[0]
         dir_name = osp.basename(osp.dirname(image_file))
 
-        avaliable_shape_types = ["rectangle", "rotation", "polygon"]
+        avaliable_shape_types = [
+            "rectangle",
+            "rotation",
+            "polygon",
+            "quadrilateral",
+        ]
         img = cv2.imdecode(np.fromfile(image_file, dtype=np.uint8), 1)
         data = self.read_json(label_file)
         image_width = data["imageWidth"]

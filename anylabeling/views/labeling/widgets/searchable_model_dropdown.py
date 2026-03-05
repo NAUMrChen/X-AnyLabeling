@@ -1,6 +1,6 @@
 from difflib import SequenceMatcher
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QFrame,
@@ -10,38 +10,41 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtGui import QIcon
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtGui import QIcon
 
 from anylabeling.config import get_work_directory
 from anylabeling.views.labeling.chatbot.config import *
 from anylabeling.views.labeling.chatbot.utils import load_json, save_json
 from anylabeling.views.labeling.utils.qt import new_icon, new_icon_path
+from anylabeling.views.labeling.utils.theme import get_theme
 
 
-_MODELS_CONFIG_PATH = os.path.join(
-    get_work_directory(), "xanylabeling_data/models.json"
-)
+def _get_models_config_path():
+    return os.path.join(
+        get_work_directory(), "xanylabeling_data", "models.json"
+    )
 
 
 class SearchBar(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
+        t = get_theme()
         self.setPlaceholderText("Search models")
         self.setFixedHeight(DEFAULT_FIXED_HEIGHT)
-        self.setStyleSheet(
-            f"""
+        self.setStyleSheet(f"""
             QLineEdit {{
-                background-color: #d4d4d8;
+                background-color: {t["background_secondary"]};
+                color: {t["text"]};
+                border: 1px solid {t["border"]};
                 border-radius: {BORDER_RADIUS};
                 padding: 5px 5px 5px 32px;
                 font-size: {FONT_SIZE_SMALL};
             }}
             QLineEdit:focus {{
-                border: 3px solid #60A5FA;
+                border: 2px solid {t["highlight"]};
             }}
-        """
-        )
+        """)
 
         self.search_icon = QLabel(self)
         self.search_icon.setPixmap(
@@ -83,14 +86,13 @@ class ProviderSection(QFrame):
         )
         header.addWidget(icon)
 
+        _t = get_theme()
         label = QLabel(provider_name)
-        label.setStyleSheet(
-            """
+        label.setStyleSheet(f"""
             font-weight: 700;
             font-size: 13px;
-            color: black;
-        """
-        )
+            color: {_t["text"]};
+        """)
         header.addWidget(label)
         header.addStretch()
         layout.addLayout(header)
@@ -124,35 +126,39 @@ class ModelItem(QFrame):
         self.in_favorites_section = in_favorites_section
 
         self.setFixedHeight(DEFAULT_FIXED_HEIGHT)
-        self.setFrameShape(QFrame.NoFrame)
+        self.setFrameShape(QFrame.Shape.NoFrame)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 8, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
+        _t = get_theme()
         self.name_label = QLabel(self.display_name)
-        self.name_label.setStyleSheet(f"font-size: {FONT_SIZE_SMALL};")
+        self.name_label.setStyleSheet(
+            f"font-size: {FONT_SIZE_SMALL}; color: {_t['text']}; background: transparent;"
+        )
         layout.addWidget(self.name_label)
         layout.addStretch()
 
         # Checkmark for selected item
         self.check_icon = QLabel()
+        self.check_icon.setStyleSheet("background: transparent; border: none;")
+        self.check_icon.setFixedSize(QSize(*ICON_SIZE_SMALL))
         if self.is_selected:
             self.check_icon.setPixmap(
                 QIcon(new_icon("check", "svg")).pixmap(QSize(*ICON_SIZE_SMALL))
             )
-        layout.addWidget(self.check_icon)
+        layout.addWidget(self.check_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Favorite star (initially hidden, shows on hover)
         self.star_icon = QPushButton()
         self.star_icon.setFixedSize(*ICON_SIZE_SMALL)
-        self.star_icon.setStyleSheet(
-            """
+        self.star_icon.setStyleSheet("""
             QPushButton {
                 border: none;
                 background-color: transparent;
             }
-        """
-        )
+        """)
         if self.is_favorite:
             self.star_icon.setIcon(QIcon(new_icon("starred", "svg")))
             if self.in_favorites_section:
@@ -162,19 +168,18 @@ class ModelItem(QFrame):
             self.star_icon.setVisible(False)
 
         self.star_icon.clicked.connect(self.toggle_favorite)
-        layout.addWidget(self.star_icon)
+        layout.addWidget(self.star_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self.setStyleSheet(
-            f"""
+        t = get_theme()
+        self.setStyleSheet(f"""
             ModelItem {{
                 background-color: transparent;
                 border-radius: 4px;
             }}
             ModelItem:hover {{
-                background-color: #d1d0d4;
+                background-color: {t["surface_hover"]};
             }}
-        """
-        )
+        """)
 
     def enterEvent(self, event):
         self.star_icon.setVisible(True)
@@ -199,24 +204,20 @@ class ModelItem(QFrame):
 
     def update_selection(self, is_selected):
         self.is_selected = is_selected
+        t = get_theme()
         if is_selected:
             self.check_icon.setPixmap(
                 QIcon(new_icon("check", "svg")).pixmap(QSize(*ICON_SIZE_SMALL))
             )
             self.setStyleSheet(
-                """
-                background-color: #d1d0d4;
-                border-radius: 4px;
-            """
+                f"background-color: {t['surface_pressed']}; border-radius: 4px;"
             )
         else:
             self.check_icon.clear()
-            self.setStyleSheet(
-                """
+            self.setStyleSheet("""
                 background-color: transparent;
                 border-radius: 4px;
-            """
-            )
+            """)
 
     def update_favorite(self, is_favorite):
         self.is_favorite = is_favorite
@@ -233,29 +234,38 @@ class SearchableModelDropdownPopup(QWidget):
     def __init__(self, models_data: dict = {}, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.setWindowFlags(
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
         self.setMinimumWidth(360)
         self.setFixedHeight(640)
 
-        self.setStyleSheet(
-            f"""
+        t = get_theme()
+        self.setStyleSheet(f"""
             SearchableModelDropdownPopup {{
-                background-color: #e3e2e6;
+                background-color: {t["surface"]};
                 border-radius: 8px;
             }}
+            QWidget, QFrame {{
+                background-color: {t["surface"]};
+            }}
+            QScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
             QScrollBar:vertical {{
-                background-color: #fcfcfc;
+                background-color: {t["background_secondary"]};
                 width: 10px;
                 margin: 16px 0 16px 0;
             }}
             QScrollBar::handle:vertical {{
-                background-color: #636363;
+                background-color: {t["scrollbar"]};
                 min-height: 20px;
                 border-radius: 5px;
             }}
             QScrollBar::add-line:vertical {{
                 border: none;
-                background: #fcfcfc;
+                background: {t["background_secondary"]};
                 height: 16px;
                 subcontrol-position: bottom;
                 subcontrol-origin: margin;
@@ -263,18 +273,17 @@ class SearchableModelDropdownPopup(QWidget):
             }}
             QScrollBar::sub-line:vertical {{
                 border: none;
-                background: #fcfcfc;
+                background: {t["background_secondary"]};
                 height: 16px;
                 subcontrol-position: top;
                 subcontrol-origin: margin;
                 image: url({new_icon_path("caret-up", "svg")});
             }}
             QFrame[frameShape="4"] {{
-                color: #e5e5e8;
+                color: {t["border"]};
                 max-height: 1px;
             }}
-        """
-        )
+        """)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(12, 12, 12, 12)
@@ -286,8 +295,10 @@ class SearchableModelDropdownPopup(QWidget):
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
         container = QWidget()
         self.container_layout = QVBoxLayout(container)
@@ -336,8 +347,8 @@ class SearchableModelDropdownPopup(QWidget):
                 self.model_items[model_name] = model_item
 
             separator = QFrame()
-            separator.setFrameShape(QFrame.HLine)
-            separator.setFrameShadow(QFrame.Plain)
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setFrameShadow(QFrame.Shadow.Plain)
             self.container_layout.addWidget(separator)
 
         # Add provider sections
@@ -356,8 +367,8 @@ class SearchableModelDropdownPopup(QWidget):
                 self.model_items[model_name] = model_item
 
             separator = QFrame()
-            separator.setFrameShape(QFrame.HLine)
-            separator.setFrameShadow(QFrame.Plain)
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setFrameShadow(QFrame.Shadow.Plain)
             self.container_layout.addWidget(separator)
 
         # Add stretch at the end to push content to the top
@@ -409,12 +420,13 @@ class SearchableModelDropdownPopup(QWidget):
 
     def save_models_data(self):
         """Save models data to the config file"""
-        if not os.path.exists(_MODELS_CONFIG_PATH):
+        models_config_path = _get_models_config_path()
+        if not os.path.exists(models_config_path):
             model_config = {"models_data": {}}
         else:
-            model_config = load_json(_MODELS_CONFIG_PATH)
+            model_config = load_json(models_config_path)
         model_config["models_data"] = self.models_data
-        save_json(model_config, _MODELS_CONFIG_PATH)
+        save_json(model_config, models_config_path)
 
     def filter_models(self, search_text, match_threshold=0.7):
         empty_text = "No models found."
@@ -457,14 +469,13 @@ class SearchableModelDropdownPopup(QWidget):
                     widget.setVisible(False)
 
             no_results = QLabel(empty_text)
-            no_results.setAlignment(Qt.AlignCenter)
-            no_results.setStyleSheet(
-                """
-                color: #09090b;
+            no_results.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            _t = get_theme()
+            no_results.setStyleSheet(f"""
+                color: {_t["text_secondary"]};
                 font-size: 14px;
                 padding: 20px;
-            """
-            )
+            """)
 
             self.container_layout.addWidget(no_results)
         else:
@@ -482,7 +493,7 @@ class SearchableModelDropdownPopup(QWidget):
                     widget.setVisible(has_visible_models)
                 elif (
                     isinstance(widget, QFrame)
-                    and widget.frameShape() == QFrame.HLine
+                    and widget.frameShape() == QFrame.Shape.HLine
                 ):
                     prev_widget = (
                         self.container_layout.itemAt(i - 1).widget()

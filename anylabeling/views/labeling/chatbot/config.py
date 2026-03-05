@@ -1,11 +1,24 @@
 import os
 
 from anylabeling.config import get_work_directory
+from anylabeling.views.labeling.utils.theme import get_theme
 
-root_dir = os.path.join(get_work_directory(), "xanylabeling_data/chatbot")
-MODELS_CONFIG_PATH = os.path.join(root_dir, "models.json")
-SETTINGS_CONFIG_PATH = os.path.join(root_dir, "settings.json")
-PROVIDERS_CONFIG_PATH = os.path.join(root_dir, "providers.json")
+
+def get_chatbot_root_dir():
+    return os.path.join(get_work_directory(), "xanylabeling_data", "chatbot")
+
+
+def get_models_config_path():
+    return os.path.join(get_chatbot_root_dir(), "models.json")
+
+
+def get_settings_config_path():
+    return os.path.join(get_chatbot_root_dir(), "settings.json")
+
+
+def get_providers_config_path():
+    return os.path.join(get_chatbot_root_dir(), "providers.json")
+
 
 # Global design system
 ANIMATION_DURATION = "200ms"
@@ -18,7 +31,7 @@ ICON_SIZE_NORMAL = (32, 32)
 ICON_SIZE_SMALL = (16, 16)
 
 # Initialization parameters
-DEFAULT_WINDOW_TITLE = "Chatbot (Beta)"
+DEFAULT_WINDOW_TITLE = "Chatbot"
 DEFAULT_WINDOW_SIZE = (1200, 700)  # (w, h)
 DEFAULT_FIXED_HEIGHT = 32
 CHAT_PANEL_PERCENTAGE = 88
@@ -28,19 +41,7 @@ MAX_MSG_INPUT_HEIGHT = 300
 USER_MESSAGE_MAX_WIDTH_PERCENT = 70
 REFRESH_INTERVAL = 300  # seconds
 
-# Theme configuration
-THEME = {
-    "primary": "#60A5FA",  # Tailwind CSS blue-500
-    "background": "#FFFFFF",  # Clean white background
-    "background_secondary": "#F9F9F9",  # Light gray background
-    "background_hover": "#DBDBDB",  # Light gray for hover
-    "border": "#E5E5E5",  # Subtle border color
-    "text": "#2C2C2E",  # Dark gray for better readability
-    "highlight_text": "#2196F3",  # Highlight text color
-    "success": "#30D158",  # Softer green
-    "warning": "#FF9F0A",  # Warm orange
-    "error": "#FF453A",  # Refined red
-}
+THEME = get_theme()
 
 
 # Providers config

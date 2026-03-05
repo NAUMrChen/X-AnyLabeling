@@ -4,11 +4,11 @@ import os
 import os.path as osp
 from typing import Optional
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import Qt
+from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtCore import Qt
 
 from anylabeling.views.labeling.chatbot.style import ChatbotDialogStyle
-
+from anylabeling.views.labeling.utils.theme import get_theme
 
 SUPPORTED_FORMATS = [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"]
 
@@ -236,7 +236,7 @@ class CompareViewSlider(QtWidgets.QWidget):
         self._left_label.setStyleSheet("color: #666; font-size: 11px;")
         layout.addWidget(self._left_label)
 
-        self._slider = QtWidgets.QSlider(Qt.Horizontal)
+        self._slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 100)
         self._slider.setValue(50)
         self._slider.setMinimumWidth(200)
@@ -252,29 +252,28 @@ class CompareViewSlider(QtWidgets.QWidget):
         self._value_label.setMinimumWidth(40)
         layout.addWidget(self._value_label)
 
+        t = get_theme()
         self._close_btn = QtWidgets.QToolButton()
         self._close_btn.setText("\u00d7")
         self._close_btn.setToolTip("Close Compare View")
-        self._close_btn.setStyleSheet(
-            """
-            QToolButton {
-                background-color: #e0e0e0;
+        self._close_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {t["surface"]};
                 border: none;
                 border-radius: 10px;
                 padding: 2px 6px;
                 font-size: 14px;
                 font-weight: bold;
-                color: #666;
-            }
-            QToolButton:hover {
-                background-color: #d0d0d0;
-                color: #333;
-            }
-            QToolButton:pressed {
-                background-color: #c0c0c0;
-            }
-        """
-        )
+                color: {t["text_secondary"]};
+            }}
+            QToolButton:hover {{
+                background-color: {t["background_hover"]};
+                color: {t["text"]};
+            }}
+            QToolButton:pressed {{
+                background-color: {t["border_light"]};
+            }}
+        """)
         self._close_btn.setFixedSize(20, 20)
         self._close_btn.clicked.connect(self.close_requested.emit)
         layout.addWidget(self._close_btn)

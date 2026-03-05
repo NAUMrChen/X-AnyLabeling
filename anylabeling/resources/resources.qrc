@@ -7,6 +7,7 @@
         <file>images/auto-run.png</file>
         <file>images/brain.png</file>
         <file>images/bria-ai.png</file>
+        <file>images/brush_polygon.png</file>
         <file>images/cancel.png</file>
         <file>images/caret-down.svg</file>
         <file>images/caret-up.svg</file>
@@ -14,6 +15,7 @@
         <file>images/chatbot.png</file>
         <file>images/check.svg</file>
         <file>images/checkmark.svg</file>
+        <file>images/checkmark-white.svg</file>
         <file>images/chevron-down.svg</file>
         <file>images/circle-selection.png</file>
         <file>images/circle.png</file>
@@ -125,6 +127,7 @@
         <file>images/polygon.png</file>
         <file>images/prev.png</file>
         <file>images/psyduck.png</file>
+        <file>images/quadrilateral.png</file>
         <file>images/quit.png</file>
         <file>images/qwen.png</file>
         <file>images/ragdoll.png</file>

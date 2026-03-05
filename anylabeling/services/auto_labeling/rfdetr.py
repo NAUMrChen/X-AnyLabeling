@@ -2,8 +2,8 @@ import os
 import numpy as np
 from PIL import Image
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import QCoreApplication
+from PyQt6 import QtCore
+from PyQt6.QtCore import QCoreApplication
 
 from anylabeling.app_info import __preferred_device__
 from anylabeling.views.labeling.shape import Shape
@@ -33,6 +33,7 @@ class RFDETR(Model):
             "edit_conf",
             "toggle_preserve_existing_annotations",
             "button_roi_auto_label",
+            "button_classes_filter",
         ]
         output_modes = {
             "polygon": QCoreApplication.translate("Model", "Polygon"),
@@ -73,6 +74,7 @@ class RFDETR(Model):
         self.num_select = self.config.get("num_select", 300)
         self.show_boxes = self.config.get("show_boxes", False)
         self.epsilon = self.config.get("epsilon", 0.001)
+        self.filter_classes = None
         self.replace = True
 
     @staticmethod
@@ -107,6 +109,13 @@ class RFDETR(Model):
     def set_auto_labeling_preserve_existing_annotations_state(self, state):
         """Toggle the preservation of existing annotations based on the checkbox state."""
         self.replace = not state
+
+    def set_auto_labeling_filter_classes(self, class_names):
+        """Set filter classes by name."""
+        if not class_names or len(class_names) == len(self.classes):
+            self.filter_classes = None
+        else:
+            self.filter_classes = class_names
 
     def set_mask_fineness(self, epsilon):
         """Set mask fineness epsilon value"""
@@ -258,10 +267,17 @@ class RFDETR(Model):
 
         if self.has_mask and masks is not None:
             segments = masks2segments(masks, self.epsilon)
-            for segment, box, score, label in zip(segments, boxes, scores, labels):
-                # polygon（坐标回填）
+            for i, (segment, box, score, label) in enumerate(
+                zip(segments, boxes, scores, labels)
+            ):
+                label_name = self.classes[int(label)]
+                if (
+                    self.filter_classes
+                    and label_name not in self.filter_classes
+                ):
+                    continue
                 shape = Shape(
-                    label=self.classes[int(label)],
+                    label=label_name,
                     score=float(score),
                     shape_type="polygon",
                 )
@@ -275,7 +291,7 @@ class RFDETR(Model):
                 # 可选显示 bbox（坐标回填）
                 if self.show_boxes:
                     box_shape = Shape(
-                        label=self.classes[int(label)],
+                        label=label_name,
                         score=float(score),
                         shape_type="rectangle",
                     )
@@ -286,8 +302,14 @@ class RFDETR(Model):
                     shapes.append(box_shape)
         else:
             for box, score, label in zip(boxes, scores, labels):
+                label_name = self.classes[int(label)]
+                if (
+                    self.filter_classes
+                    and label_name not in self.filter_classes
+                ):
+                    continue
                 shape = Shape(
-                    label=self.classes[int(label)],
+                    label=label_name,
                     score=float(score),
                     shape_type="rectangle",
                 )

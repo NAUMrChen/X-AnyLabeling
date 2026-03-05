@@ -1,5 +1,68 @@
 # X-AnyLabeling Changelog
 
+## `v4.0.0-beta.1` (Mar 01, 2026)
+
+### 🚀 New Features
+
+- [Breaking] Migrate the GUI framework from PyQt5 to PyQt6 across the application, including QtWebEngine and scoped-enum API updates. (#1087)
+- Add appearance theme support with `System`, `Light`, and `Dark` modes. (#315,#741,#937)
+- Add class filter dialog support in auto-labeling for multi-model workflows (YOLO family, RT-DETR, RF-DETR, DAMO YOLO, YOLO-NAS, and related models). (#905)
+- Add cancellable model download with real-time progress display in the auto-labeling panel. (#40)
+- Add Shift-key snapping for horizontal/vertical line segments when drawing `line` and `linestrip`. (#1312)
+- Add quadrilateral shape annotation (`T`) and quadrilateral import/export support for PPOCR label conversion. (#705)
+- Add brush polygon drawing mode with configurable point distance. (#799)
+- Add double-click label editing support in Edit Mode.
+
+### 🐛 Bug Fixes
+
+- Fix InternImage configuration type mapping (`internimage_cls`).
+- Fix video frame extraction progress hangs caused by unconsumed ffmpeg output pipes. (#1309)
+- Fix rotation-shape clipping behavior to keep geometry within pixmap boundaries. (#1268)
+- Fix incorrect display of `h` and `w` of shape properties in canvas.
+
+### 🛠️ Improvements
+
+- Optimize image switching performance for large datasets. (#757)
+- Reorganize PyInstaller assets into `packaging/pyinstaller/` and improve ONNXRuntime runtime bootstrapping for packaged builds.
+- Update packaging/dependency configuration for PyQt6-era environments and remove legacy `requirements*.txt` files.
+
+### 🌟 Contributors
+
+A total of 1 developer contributed to this release.
+
+Thank @CVHub520
+
+## `v3.3.10` (Feb 15, 2026)
+
+### 🚀 New Features
+
+- Respect auto_highlight_shape and disable wheel editing when it is enabled (wheel rectangle editing)
+- Add handling for custom attribute types (group_id, lineedit) in label widget
+
+### 🐛 Bug Fixes
+
+- Add Meta class with widget configuration for YOLO26 variants (#1280)
+- Resolve export only from current folder when images are in multiple subfolders (#1303)
+- Improve error handling in availability checks for torch, cuda, and mps (#1294)
+- Resolve UI freeze when copying app info in packaged exe (about dialog)
+- Deduplicate group_id options in attribute combo (#1304)
+- Fix several bugs about the update of attributes panel (#1301)
+- Fix paint assertion crash issues (#1296)
+- Fix occasional GUI crashes when switching modes after automatic labeling
+- Fix GUI crashes due to empty self.points in shape.py (#1295)
+- Fix typo (#1299)
+
+### 🛠️ Improvements
+
+- Add FAQ entry regarding errors when using precompiled EXE for Ultralytics training (#1100)
+- Add example of group_id and lineedit attributes in classification shape-level README
+
+### 🌟 Contributors
+
+A total of 6 developers contributed to this release.
+
+Thank @Jingnan-Jia, @ParshikovMM, @hehuaiyu, @jk4e, @yuliangzhong, @CVHub520
+
 ## `v3.3.9` (Feb 02, 2026)
 
 ### 🚀 New Features

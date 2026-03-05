@@ -35,6 +35,7 @@ from .image import (
 from ._io import io_open
 from .qt import (
     Struct,
+    StayOpenMenuFilter,
     add_actions,
     scan_all_images,
     distance,
@@ -53,6 +54,7 @@ from .shape import (
     shapes_to_label,
     rectangle_from_diagonal,
     shape_conversion,
+    open_shape_converter,
 )
 from .upload import (
     upload_image_flags_file,

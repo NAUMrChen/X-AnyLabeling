@@ -6,11 +6,15 @@ import importlib.resources as pkg_resources
 import anylabeling.configs as anylabeling_configs
 from anylabeling.config import get_config
 
-from PyQt5 import uic
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QPoint
-from PyQt5.QtWidgets import (
+from PyQt6 import uic
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QPoint
+from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
     QWidget,
     QPushButton,
 )
@@ -25,12 +29,18 @@ from anylabeling.services.auto_labeling import (
 )
 from anylabeling.views.labeling.chatbot.style import ChatbotDialogStyle
 from anylabeling.views.labeling.logger import logger
+from anylabeling.views.labeling.utils.theme import get_theme
 from anylabeling.views.labeling.utils.style import (
     get_lineedit_style,
     get_double_spinbox_style,
     get_normal_button_style,
     get_highlight_button_style,
     get_toggle_button_style,
+    get_download_progress_bar_style,
+    get_cancel_download_button_style,
+)
+from anylabeling.views.labeling.widgets.classes_filter_dialog import (
+    ClassesFilterDialog,
 )
 from anylabeling.views.labeling.widgets.api_token_dialog import ApiTokenDialog
 from anylabeling.views.labeling.widgets.remote_server_dialog import (
@@ -39,7 +49,7 @@ from anylabeling.views.labeling.widgets.remote_server_dialog import (
 from anylabeling.views.labeling.widgets.searchable_model_dropdown import (
     load_json,
     save_json,
-    _MODELS_CONFIG_PATH,
+    _get_models_config_path,
     SearchableModelDropdownPopup,
 )
 
@@ -130,6 +140,15 @@ class AutoLabelingWidget(QWidget):
             self.on_task_changed
         )
 
+        # Download progress bar
+        self._setup_download_progress_ui()
+        self.model_manager.download_progress.connect(
+            self._on_download_progress
+        )
+        self.model_manager.download_finished.connect(
+            self._on_download_finished
+        )
+
         # Disable tools when inference is running
         def set_enable_tools(enable):
             self.model_selection_button.setEnabled(enable)
@@ -176,6 +195,8 @@ class AutoLabelingWidget(QWidget):
         self.model_dropdown = SearchableModelDropdownPopup(model_data)
         self.model_dropdown.hide()
         self.model_dropdown.modelSelected.connect(self.on_model_selected)
+        self.model_selection_button.setAutoDefault(False)
+        self.model_selection_button.setDefault(False)
         self.model_selection_button.setStyleSheet(get_normal_button_style())
         self.model_selection_button.clicked.connect(self.show_model_dropdown)
 
@@ -199,6 +220,12 @@ class AutoLabelingWidget(QWidget):
             )
             # 初始化文案
             self.on_roi_auto_label_toggled(self.button_roi_auto_label.isChecked())
+        # --- Configuration for: button_classes_filter ---
+        self.button_classes_filter.setStyleSheet(get_normal_button_style())
+        self.button_classes_filter.setText(self.tr("Classes"))
+        self.button_classes_filter.clicked.connect(
+            self.on_classes_filter_clicked
+        )
 
         # --- Configuration for: button_set_api_token ---
         self.button_set_api_token.setStyleSheet(get_normal_button_style())
@@ -331,18 +358,16 @@ class AutoLabelingWidget(QWidget):
                 "Adjust mask fineness: lower=finer, higher=coarser [Default: 0.001]"
             )
         )
-        self.mask_fineness_value_label.setStyleSheet(
-            """
-            QLabel { 
-                color: #6c757d; 
+        self.mask_fineness_value_label.setStyleSheet(f"""
+            QLabel {{ 
+                color: {get_theme()["text_secondary"]}; 
                 font-size: 10px; 
                 font-weight: 500;
                 background: transparent;
                 border: none;
                 padding: 0px;
-            }
-        """
-        )
+            }}
+        """)
         self.on_mask_fineness_changed(self.mask_fineness_slider.value())
 
         # ===================================
@@ -418,18 +443,6 @@ class AutoLabelingWidget(QWidget):
             roi=roi,
         )
 
-    def hide_labeling_widgets(self):
-        """Hide labeling widgets by default"""
-        widgets = [
-            # ...existing code...
-            "button_reset_tracker",
-            # 新增
-            "button_roi_auto_label",
-            # ...existing code...
-        ]
-        for widget in widgets:
-            getattr(self, widget).hide()
-
     def init_model_data(self):
         """Get models data"""
         model_data = {
@@ -449,7 +462,9 @@ class AutoLabelingWidget(QWidget):
         }
 
         try:
-            local_model_data = load_json(_MODELS_CONFIG_PATH)["models_data"]
+            local_model_data = load_json(_get_models_config_path())[
+                "models_data"
+            ]
             for model_name, model_dict in local_model_data["Custom"].items():
                 if model_name == "load_custom_model":
                     continue
@@ -568,7 +583,7 @@ class AutoLabelingWidget(QWidget):
                         self, default_url, default_api_key
                     )
 
-                    if dialog.exec_() == QDialog.Accepted:
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
                         new_url = dialog.get_server_url()
                         new_api_key = dialog.get_api_key()
                         if new_url:
@@ -603,10 +618,10 @@ class AutoLabelingWidget(QWidget):
 
             # Open file dialog to select "config.yaml" file for model
             file_dialog = QFileDialog(self)
-            file_dialog.setFileMode(QFileDialog.ExistingFile)
+            file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
             file_dialog.setNameFilter("Config file (*.yaml)")
 
-            if file_dialog.exec_():
+            if file_dialog.exec():
                 self.hide_labeling_widgets()
                 config_file = file_dialog.selectedFiles()[0]
                 flag = self.model_manager.load_custom_model(config_file)
@@ -635,7 +650,9 @@ class AutoLabelingWidget(QWidget):
                     "display_name": config_info["display_name"],
                     "config_path": config_file,
                 }
-                save_json({"models_data": models_data}, _MODELS_CONFIG_PATH)
+                save_json(
+                    {"models_data": models_data}, _get_models_config_path()
+                )
                 self.model_dropdown.update_models_data(models_data)
 
                 self.clear_auto_labeling_action_requested.emit()
@@ -661,7 +678,8 @@ class AutoLabelingWidget(QWidget):
                 ):
                     del models_data[provider][model_name]
                     save_json(
-                        {"models_data": models_data}, _MODELS_CONFIG_PATH
+                        {"models_data": models_data},
+                        _get_models_config_path(),
                     )
                     self.model_dropdown.update_models_data(models_data)
             except Exception as e:
@@ -800,12 +818,98 @@ class AutoLabelingWidget(QWidget):
                 text_prompt=self.edit_text.text(),
             )
 
+    def _setup_download_progress_ui(self):
+        """Build the download-progress row (hidden by default)."""
+        self._download_widget = QWidget()
+        layout = QHBoxLayout(self._download_widget)
+        layout.setContentsMargins(0, 0, 0, 2)
+        layout.setSpacing(8)
+
+        self._download_progress_bar = QProgressBar()
+        self._download_progress_bar.setRange(0, 100)
+        self._download_progress_bar.setValue(0)
+        self._download_progress_bar.setStyleSheet(
+            get_download_progress_bar_style()
+        )
+        self._download_progress_bar.setFixedHeight(6)
+
+        self._download_info_label = QLabel("")
+        self._download_info_label.setStyleSheet(
+            f"color: {get_theme()['text_secondary']}; "
+            f"font-size: 11px; background: transparent; border: none;"
+        )
+
+        self._cancel_download_button = QPushButton(self.tr("Cancel"))
+        self._cancel_download_button.setStyleSheet(
+            get_cancel_download_button_style()
+        )
+        self._cancel_download_button.setFixedHeight(20)
+        self._cancel_download_button.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        self._cancel_download_button.clicked.connect(self._on_cancel_download)
+
+        layout.addWidget(self._download_progress_bar, 1)
+        layout.addWidget(self._download_info_label)
+        layout.addWidget(self._cancel_download_button)
+
+        main_layout = self.layout()
+        main_layout.insertWidget(
+            main_layout.indexOf(self.model_status_label), self._download_widget
+        )
+        self._download_widget.hide()
+        self._downloading = False
+
+    @staticmethod
+    def _format_bytes(n):
+        for unit in ("B", "KB", "MB", "GB"):
+            if abs(n) < 1024:
+                return f"{n:.1f}{unit}"
+            n /= 1024
+        return f"{n:.1f}TB"
+
+    @pyqtSlot(int, int)
+    def _on_download_progress(self, downloaded, total):
+        if not self._downloading:
+            self._downloading = True
+            self._download_widget.show()
+            self.model_status_label.hide()
+        if total > 0:
+            percent = int(downloaded * 100 / total)
+            self._download_progress_bar.setRange(0, 100)
+            self._download_progress_bar.setValue(percent)
+            self._download_info_label.setText(
+                f"{self._format_bytes(downloaded)} / "
+                f"{self._format_bytes(total)}  ({percent}%)"
+            )
+        else:
+            self._download_progress_bar.setRange(0, 0)
+            self._download_info_label.setText(
+                f"{self._format_bytes(downloaded)}"
+            )
+
+    @pyqtSlot()
+    def _on_download_finished(self):
+        self._downloading = False
+        self._download_widget.hide()
+        self.model_status_label.show()
+        self._download_progress_bar.setValue(0)
+        self._download_info_label.setText("")
+
+    def _on_cancel_download(self):
+        self.model_manager.cancel_download()
+        self._downloading = False
+        self._download_widget.hide()
+        self.model_status_label.show()
+        self.model_status_label.setText(self.tr("Cancelling..."))
+
     def unload_and_hide(self):
         """Unload model and hide widget"""
         self.hide()
 
     def on_new_model_status(self, status):
-        self.model_status_label.setText(status)
+        if not self._downloading:
+            self.model_status_label.setText(status)
 
     def on_new_model_loaded(self, model_config):
         """Enable model select combobox"""
@@ -954,6 +1058,7 @@ class AutoLabelingWidget(QWidget):
             "output_select_combobox",
             "toggle_preserve_existing_annotations",
             "button_set_api_token",
+            "button_classes_filter",
             "button_reset_tracker",
             "upn_select_combobox",
             "gd_select_combobox",
@@ -1023,10 +1128,46 @@ class AutoLabelingWidget(QWidget):
         """Handle reset tracker"""
         self.model_manager.set_auto_labeling_reset_tracker()
 
+    def on_classes_filter_clicked(self):
+        """Open the classes filter dialog and apply the selection."""
+        if self.model_manager.loaded_model_config is None:
+            return
+        model = self.model_manager.loaded_model_config.get("model")
+        classes_attr = getattr(model, "classes", [])
+        if not classes_attr:
+            return
+        if isinstance(classes_attr, dict):
+            class_names = [
+                classes_attr[k] for k in sorted(classes_attr.keys())
+            ]
+        else:
+            class_names = list(classes_attr)
+
+        raw_filter = getattr(model, "filter_classes", None)
+        filter_names = None
+        if isinstance(raw_filter, list):
+            if (
+                raw_filter
+                and isinstance(raw_filter[0], int)
+                and not isinstance(classes_attr, dict)
+            ):
+                filter_names = [
+                    class_names[i]
+                    for i in raw_filter
+                    if 0 <= int(i) < len(class_names)
+                ]
+            else:
+                filter_names = raw_filter
+        dialog = ClassesFilterDialog(class_names, filter_names, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.model_manager.set_auto_labeling_filter_classes(
+                dialog.get_selected_classes()
+            )
+
     def on_set_api_token(self):
         """Show a dialog to input the API token."""
         dialog = ApiTokenDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             token = dialog.get_token()
             try:
                 self.model_manager.set_auto_labeling_api_token(token)

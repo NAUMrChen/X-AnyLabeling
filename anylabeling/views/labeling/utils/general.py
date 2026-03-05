@@ -104,7 +104,7 @@ def collect_system_info():
     gpu_info = get_gpu_info()
     cuda_info = get_cuda_version()
     python_info = platform.python_version()
-    pyqt5_info = get_installed_package_version("PyQt5")
+    pyqt6_info = get_installed_package_version("PyQt6")
     onnx_info = get_installed_package_version("onnx")
     ort_info = get_installed_package_version("onnxruntime")
     ort_gpu_info = get_installed_package_version("onnxruntime-gpu")
@@ -123,7 +123,7 @@ def collect_system_info():
         "Python Version": python_info,
     }
     pkg_info = {
-        "PyQt5 Version": pyqt5_info,
+        "PyQt6 Version": pyqt6_info,
         "ONNX Version": onnx_info,
         "ONNX Runtime Version": ort_info,
         "ONNX Runtime GPU Version": ort_gpu_info,
@@ -153,11 +153,23 @@ def get_installed_package_version(package_name):
         return None
 
 
+def _subprocess_kwargs():
+    """Extra kwargs for subprocess calls to avoid console window on Windows."""
+    kwargs = {}
+    if platform.system() == "Windows":
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NO_WINDOW  # hide console flash
+        )
+    return kwargs
+
+
 def get_cuda_version():
     try:
-        nvcc_output = subprocess.check_output(["nvcc", "--version"]).decode(
-            "utf-8"
-        )
+        nvcc_output = subprocess.check_output(
+            ["nvcc", "--version"],
+            timeout=5,
+            **_subprocess_kwargs(),
+        ).decode("utf-8")
         version_line = next(
             (line for line in nvcc_output.split("\n") if "release" in line),
             None,
@@ -177,6 +189,8 @@ def get_gpu_info():
                 "--format=csv,noheader,nounits",
             ],
             encoding="utf-8",
+            timeout=5,
+            **_subprocess_kwargs(),
         )
         gpu_info_lines = []
         for line in smi_output.strip().split("\n"):

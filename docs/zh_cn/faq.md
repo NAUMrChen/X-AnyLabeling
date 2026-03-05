@@ -4,6 +4,12 @@
 ### 安装与运行相关问题
 
 <details>
+<summary>Q: 启动时报错：仅完成部分的ReadProcessMemory或 WriteProcessMemory请求。</summary>
+
+可尝试重新打开一次。
+</details>
+
+<details>
 <summary>Q: 启动时报错：ImportError: No module named expat; use SimpleXMLTreeBuilder instead</summary>
 
 `Conda` 会自动更新系统库（如 expat）到最新版本，导致与预编译的 Python 模块不兼容。可尝试下载低版本 expat 解决，如：
@@ -170,6 +176,27 @@ python -m anylabeling
 
 
 ### 模型相关问题
+
+<details>
+<summary>Q: 如何使用带 NMS 的 YOLO26 模型（自动标注时出现多个重叠框如何解决）？</summary>
+
+YOLO26 默认导出为 end2end（NMS-free）模型，若希望使用带 NMS 的后处理以消除重叠框，可按以下方式操作：
+
+1. 从 PT 导出 ONNX 时，将参数设置为 **end2end=false**；
+2. end2end=false 时后处理与 YOLO11 一致，因此在自定义模型配置文件中需将 **type 设为 yolo11**，不要使用 type: yolo26。
+
+详情可参考 [#1280](https://github.com/CVHub520/X-AnyLabeling/issues/1280)。
+</details>
+
+<details>
+<summary>Q: 为什么使用预编译的 EXE 运行 Ultralytics（YOLO）训练会报错？</summary>
+
+目前，通过 X-AnyLabeling 的预编译可执行文件（EXE）版本直接进行 Ultralytics/YOLO 模型训练暂不支持。主要原因包括：1）官方发布的 EXE 默认未打包 Ultralytics 训练环境；2）将应用打包成独立 EXE 后，Python 在子进程调用、动态脚本执行（例如 train_script.py）等方面存在固有的复杂性和限制，无法像在源码环境中一样正确生成并调用训练脚本。
+
+在 Python 源码环境中运行 X-AnyLabeling 时，训练功能可正常使用。因此如需进行 YOLO 模型训练，请使用 Python 环境运行本软件。
+
+详情可参考 [#1100](https://github.com/CVHub520/X-AnyLabeling/issues/1100)。
+</details>
 
 <details>
 <summary>Q: 在 venv 环境中运行时出现 "Error loading tokenizer: No such file or directory (os error 2)"</summary>

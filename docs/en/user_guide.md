@@ -52,6 +52,7 @@ This guide provides comprehensive instructions for using X-AnyLabeling, covering
       * [7.5 Hover Auto-Highlight](#75-hover-auto-highlight)
       * [7.6 Shape Appearance](#76-shape-appearance)
       * [7.7 Model Download Source](#77-model-download-source)
+      * [7.8 Theme Settings](#78-theme-settings)
    * [8. Supported Tasks](#8-supported-tasks)
       * [8.1 Image Classification](#81-image-classification)
       * [8.2 Object Detection](#82-object-detection)
@@ -191,10 +192,11 @@ X-AnyLabeling supports creating the following types of shapes:
 
 - **Rectangle** (`R`): Click and drag to define opposite corners, or click once for the first corner and again for the second.
 - **Rotated Rectangle** (`O`): Click to set the first point, click again for the second point defining one side, then move the cursor to set the height and click a third time.
-- **Polygon** (`P`): Click along the object's boundary to place vertices. Click the starting point or double-click the last point to close the polygon. Requires at least 3 points.
+- **Polygon** (`P`): Click along the object's boundary to place vertices. Click the starting point or double-click the last point to close the polygon. Requires at least 3 points. A brush mode (`Ctrl+N`) is also available: once activated, click to place the first point, then move the mouse to automatically trace polygon vertices along the cursor path. Move near the starting point to auto-close. The point distance can be adjusted via `Edit > Set Brush Point Distance`.
+- **Quadrilateral** (`T`): Click to place the first corner, then click the remaining three corners in order to complete the quadrilateral.
 - **Point**: Click to place a point.
-- **Line**: Click to set the start point, move the cursor, and click again to set the end point.
-- **Line Strip**: Click to place the first point, then click to add subsequent points for connected line segments. Double-click to finish.
+- **Line**: Click to set the start point, move the cursor, and click again to set the end point. Hold `Shift` while drawing to snap the segment horizontally or vertically.
+- **Line Strip**: Click to place the first point, then click to add subsequent points for connected line segments. Hold `Shift` while drawing each segment to snap it horizontally or vertically. Double-click to finish.
 - **Circle**: Click to set the center, move the cursor to define the radius, and click again.
 
 You can create shapes using the tools in the left toolbar, the right-click context menu, or keyboard shortcuts.
@@ -208,11 +210,11 @@ X-AnyLabeling provides two shape interaction modes:
 
 Press `Ctrl+J` to quickly switch between Drawing and Editing modes. Additional object-specific operations:
 
-- **Rectangles**: You can drag a rectangle's corner handles to resize it, or select multiple rectangles and merge them using the right-click menu. Mouse wheel editing is also supported; when enabled via the `wheel_rectangle_editing` setting, scrolling inside the rectangle scales it, while scrolling outside adjusts the nearest edge.
+- **Rectangles**: You can drag a rectangle's corner handles to resize it, or select multiple rectangles and merge them using the right-click menu. Mouse wheel editing is also supported; when enabled via the `wheel_rectangle_editing` setting, scrolling inside the rectangle scales it, while scrolling outside adjusts the nearest edge. Note: wheel rectangle editing is automatically disabled when `auto_highlight_shape` is enabled.
 - **Polygons**: In Editing Mode, dragging an edge adds a new vertex, and holding `Shift` while clicking a vertex removes it. Polygons also support merging via the right-click menu.
 - **Rotated Rectangles**: Select a rotated rectangle and press `Z`, `X`, `C`, or `V` to rotate it in different directions. A real-time display of the rotation angle is available via the View menu.
 
-Additionally, you can quickly copy the coordinates of any selected shape to your clipboard using the **Copy Coordinates** option from the right-click context menu. For rectangles, this outputs the format `[x1, y1, x2, y2]` (top-left and bottom-right corners), while other shape types output `[x1, y1, x2, y2, x3, y3, ...]` (all vertex coordinates).
+Additionally, you can quickly copy the coordinates of any selected shape to your clipboard using the **Copy Coordinates** option from the right-click context menu. For rectangles, this outputs the format `[x1, y1, x2, y2]` (top-left and bottom-right corners), while other shape types output `[x1, y1, x2, y2, x3, y3, ...]` (all vertex coordinates). In Editing Mode, double-clicking a shape on the canvas opens the label editor; you can disable this via the `double_click_edit_label` canvas setting (default: true).
 
 > [!TIP]
 > X-AnyLabeling provides two convenient shape navigation features:
@@ -250,6 +252,12 @@ The following search modes are currently supported:
 
 Enter plain text directly, and the system will search for files whose names contain that text. For example, entering `test` will find all images with "test" in their filename.
 
+**Index Search**
+
+Use the `#N` format to target an image by index, where `N` must be a positive integer. Examples:
+- `#1` targets the 1st image in the current file list
+- `#10` targets the 10th image in the current file list
+
 **Regular Expression Search**
 
 Use the `<pattern>` format for regular expression searches. Examples:
@@ -264,7 +272,7 @@ Filter images by object attributes using the format `attribute::value`:
 - `gid::0`: Find images containing objects with group ID 0 (supports any integer group ID)
 - `shape::1` or `shape::true`: Find annotated images (containing at least one annotation object)
 - `label::person`: Find images containing objects labeled "person"
-- `type::rectangle`: Find images containing rectangle objects. Supported types include: `rectangle`, `polygon`, `rotation`, `point`, `line`, `circle`, `linestrip`
+- `type::rectangle`: Find images containing rectangle objects. Supported types include: `rectangle`, `polygon`, `rotation`, `quadrilateral`, `point`, `line`, `circle`, `linestrip`
 - `score::[0,0.5]`: Find images containing objects with scores in the range [0, 0.5] (closed interval)
 - `score::(0,0.6]`: Find images containing objects with scores in the range (0, 0.6] (left-open, right-closed)
 - `score::[0,0.6)`: Find images containing objects with scores in the range [0, 0.6) (left-closed, right-open)
@@ -634,14 +642,25 @@ The cropped image saving function can be implemented through the following steps
 
 ### 5.4 Shape Type Conversion
 
-You can convert between certain shape types using the `Tools` menu. Supported conversions include:
+X-AnyLabeling provides a unified **Shape Converter**.
+Open it from **Tools -> Shape Converter**, then select a source shape type and a target shape type to run batch conversion.
 
-- **Rectangle to Rotated Box**
-- **Rotated Box to Rectangle**
-- **Polygon to Bounding Box**
-- **Polygon to Rotated Box**
+Currently supported conversion mappings:
 
-> **Note:** Converting *to* Rectangle or Bounding Box uses the axis-aligned bounding box, losing rotation or precise boundary information. This conversion is **irreversible** within the tool, so use it carefully.
+- `polygon` -> `rectangle`, `rotation`
+- `rectangle` -> `rotation`, `polygon`, `circle`, `quadrilateral`
+- `rotation` -> `rectangle`, `quadrilateral`, `polygon`, `circle`
+- `line` -> `linestrip`
+- `circle` -> `rectangle`, `rotation`, `quadrilateral`, `polygon`
+- `quadrilateral` -> `polygon`
+
+Rules:
+
+- Conversions *to* `circle` use an **inscribed-circle** strategy.
+- `polygon`/`rotation` -> `rectangle` uses an axis-aligned bounding box (AABB).
+- `circle` -> `rectangle`/`rotation`/`quadrilateral` generates a four-point shape from circle center and radius.
+
+> **Note:** Some conversions are lossy (e.g., rotation angle, exact boundaries, curve details) and are **irreversible**. Back up annotations before large batch conversions.
 
 ### 5.5 Digit Shortcut Manager
 
@@ -654,7 +673,7 @@ To open the Digit Shortcut Manager, select **Tools** in the top menu bar of the 
 In the Digit Shortcut Manager dialog, users can see a table containing all numeric keys (0-9), with each row including the following information:
 
 - **Digit**: Represents the numeric key (0-9) on the keyboard
-- **Drawing Mode**: Choose the type of shape to draw from the dropdown menu, including rectangle, polygon, rotation, circle, line, point, linestrip, or none
+- **Drawing Mode**: Choose the type of shape to draw from the dropdown menu, including rectangle, polygon, rotation, quadrilateral, circle, line, point, linestrip, or none
 - **Label**: Specify the default label name for the shape (required)
 
 **Configuring Shortcuts**: Select the drawing mode corresponding to the digit, enter the default label name for that shape (required when a drawing mode is enabled), then click **OK** to save the settings.
@@ -742,9 +761,11 @@ The default keyboard shortcuts are listed below. You can customize these in the 
 | `a`                   | Previous Image                                   |                                            |
 | `Ctrl+Shift+d`        | Next Annotated/Unannotated Image                 | Behavior depends on `switch_to_checked` config |
 | `Ctrl+Shift+a`        | Previous Annotated/Unannotated Image             | Behavior depends on `switch_to_checked` config |
-| `p`                   | Create Polygon Tool                              | Shortcut might vary (check interface)      |
-| `o`                   | Create Rotated Rectangle Tool                    | Shortcut might vary                        |
-| `r`                   | Create Rectangle Tool                            | Shortcut might vary                        |
+| `p`                   | Create Polygon Shape                             | Shortcut might vary (check interface)      |
+| `Ctrl+n`              | Create Brush Polygon                             | Toggle brush mode for polygon drawing      |
+| `o`                   | Create Rotated Rectangle Shape                   | Shortcut might vary                        |
+| `r`                   | Create Rectangle Shape                           | Shortcut might vary                        |
+| `t`                   | Create Quadrilateral Shape                       | Shortcut might vary                        |
 | `i`                   | Run AI Model Inference                           | If model loaded                            |
 | `q`                   | Add Positive Point (SAM)                         | SAM Interactive Segmentation Mode          |
 | `e`                   | Add Negative Point (SAM)                         | SAM Interactive Segmentation Mode          |
@@ -929,6 +950,24 @@ shape:
     *   If neither the environment variable nor the config file is explicitly set to `modelscope`, the default behavior depends on the language setting in `.xanylabelingrc`:
         *   If `language: zh_CN` (Chinese), it defaults to `modelscope`.
         *   Otherwise (e.g., `language: en_US`), it defaults to `github`.
+
+### 7.8 Theme Settings
+
+X-AnyLabeling supports three theme modes, accessible from the top-level **Theme** menu:
+
+| Option | Description |
+|--------|-------------|
+| **System** | Automatically follows the operating system's light/dark preference. This is the default. |
+| **Light** | Always uses the light theme. |
+| **Dark** | Always uses the dark theme. |
+
+After selecting an option, a confirmation dialog appears. Click **OK** to save the setting. The application does not restart automatically; a prompt will remind you to restart for the theme to take effect. Click **Cancel** to discard the change.
+
+You can also set the theme directly in `~/.xanylabelingrc`:
+
+```yaml
+theme: auto  # Options: auto, light, dark
+```
 
 ## 8. Supported Tasks
 

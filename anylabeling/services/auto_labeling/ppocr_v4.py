@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import QCoreApplication
+from PyQt6 import QtCore
+from PyQt6.QtCore import QCoreApplication
 
 from anylabeling.app_info import __preferred_device__
 from anylabeling.views.labeling.shape import Shape
@@ -254,9 +254,12 @@ class PPOCRv4(Model):
             score = res["score"]
             points = res["points"]
             description = res["description"]
-            shape_type = (
-                "rectangle" if is_possible_rectangle(points) else "polygon"
-            )
+            if is_possible_rectangle(points):
+                shape_type = "rectangle"
+            elif len(points) == 4:
+                shape_type = "quadrilateral"
+            else:
+                shape_type = "polygon"
             shape = Shape(
                 label="text",
                 score=score,
@@ -272,11 +275,14 @@ class PPOCRv4(Model):
                 shape.add_point(QtCore.QPointF(*pt2))
                 shape.add_point(QtCore.QPointF(*pt3))
                 shape.add_point(QtCore.QPointF(*pt4))
+            elif shape_type == "quadrilateral":
+                for point in points:
+                    shape.add_point(QtCore.QPointF(*point))
+                shape.close()
             elif shape_type == "polygon":
                 for point in points:
                     shape.add_point(QtCore.QPointF(*point))
                 shape.add_point(QtCore.QPointF(*points[0]))
-                shape.closed = True
             shapes.append(shape)
 
         result = AutoLabelingResult(shapes, replace=True)

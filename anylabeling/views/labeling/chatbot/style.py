@@ -1,15 +1,16 @@
 from typing import Dict, List, Tuple
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget,
     QFrame,
     QVBoxLayout,
     QLabel,
     QGridLayout,
 )
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 
 from anylabeling.views.labeling.chatbot.config import *
+from anylabeling.views.labeling.utils.theme import get_theme
 
 
 class CustomTooltip(QWidget):
@@ -18,15 +19,20 @@ class CustomTooltip(QWidget):
     def __init__(
         self,
         parent=None,
-        text_color: str = "#7f7f88",
-        background_color: str = "#ffffff",
+        text_color: str = None,
+        background_color: str = None,
         title: str = None,
         value_pairs: List[Tuple[str, str]] = None,
     ):
         super().__init__(parent)
-        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        t = get_theme()
+        text_color = text_color or t["text_secondary"]
+        background_color = background_color or t["background"]
+        self.setWindowFlags(
+            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
         self.container = QFrame(self)
         self.container.setObjectName("tooltip_container")
@@ -41,7 +47,7 @@ class CustomTooltip(QWidget):
         layout.setSpacing(8)
 
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet(f"color: #000000;")
+        self.title_label.setStyleSheet(f"color: {get_theme()['text']};")
         layout.addWidget(self.title_label)
 
         if value_pairs:
@@ -53,14 +59,13 @@ class CustomTooltip(QWidget):
                 name_label.setStyleSheet(f"color: {text_color};")
                 value_label = QLabel(value)
                 value_label.setStyleSheet(f"color: {text_color};")
-                value_label.setAlignment(Qt.AlignRight)
+                value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
                 grid_layout.addWidget(name_label, i, 0)
                 grid_layout.addWidget(value_label, i, 1)
 
             layout.addLayout(grid_layout)
 
-        self.setStyleSheet(
-            f"""
+        self.setStyleSheet(f"""
             QWidget {{
                 background-color: transparent;
             }}
@@ -69,8 +74,7 @@ class CustomTooltip(QWidget):
                 border-radius: 16px;
                 border: 1px solid rgba(0, 0, 0, 0.1);
             }}
-        """
-        )
+        """)
 
     def show_at(self, pos):
         """Show tooltip at specified position"""
@@ -81,30 +85,31 @@ class CustomTooltip(QWidget):
 
 class ChatbotDialogStyle:
     def get_menu_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QMenu {{
-                background-color: #FFFFFF;
-                border: 1px solid #E0E0E0;
+                background-color: {theme["background_secondary"]};
+                border: 1px solid {theme["border"]};
                 border-radius: 4px;
                 padding: 2px;
             }}
             QMenu::item {{
                 padding: 6px 28px;
                 border-radius: 4px;
+                color: {theme["text"]};
             }}
             QMenu::item:selected {{
-                background-color: #F5F5F5;
+                background-color: {theme["surface_hover"]};
             }}
             QMenu::separator {{
                 height: 1px;
-                background-color: #E0E0E0;
+                background-color: {theme["border"]};
                 margin: 4px 2px;
             }}
         """
 
     def get_dialog_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
         QDialog {{
             background-color: {theme["background"]};
@@ -121,7 +126,6 @@ class ChatbotDialogStyle:
             background-color: {theme["background_secondary"]};
             selection-background-color: {theme["primary"]};
             font-size: {FONT_SIZE_NORMAL};
-            transition: border {ANIMATION_DURATION} ease;
         }}
         QLineEdit:focus, QTextEdit:focus {{
             border: 2px solid {theme["primary"]};
@@ -165,7 +169,7 @@ class ChatbotDialogStyle:
     """
 
     def get_main_splitter_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QSplitter::handle {{
                 background-color: {theme["border"]};
@@ -173,7 +177,7 @@ class ChatbotDialogStyle:
         """
 
     def get_provider_button_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 background-color: transparent;
@@ -184,33 +188,31 @@ class ChatbotDialogStyle:
                 color: {theme["text"]};
                 font-size: {FONT_SIZE_NORMAL};
                 font-weight: 450;
-                transition: all {ANIMATION_DURATION} ease;
             }}
             QPushButton:focus {{
                 outline: none;
                 border: none;
             }}
             QPushButton:checked {{
-                background-color: #d1d0d4;
-                color: white;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                background-color: {theme["surface_pressed"]};
+                color: {theme["text"]};
             }}
             QPushButton:hover:!checked {{
-                background-color: #dcdbdf;
+                background-color: {theme["surface_hover"]};
             }}
         """
 
     def get_left_widget_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QWidget {{
-                background-color: #e3e2e6;
+                background-color: {theme["surface"]};
                 border-right: 1px solid {theme["border"]};
             }}
         """
 
     def get_middle_widget_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QWidget {{
                 background-color: {theme["background"]};
@@ -218,7 +220,7 @@ class ChatbotDialogStyle:
         """
 
     def get_chat_container_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QWidget {{
                 background-color: {theme["background"]};
@@ -226,7 +228,7 @@ class ChatbotDialogStyle:
         """
 
     def get_chat_scroll_area_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QScrollArea {{
                 background-color: {theme["background"]};
@@ -235,7 +237,7 @@ class ChatbotDialogStyle:
         """
 
     def get_input_container_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QWidget {{
                 background-color: transparent;
@@ -243,7 +245,7 @@ class ChatbotDialogStyle:
         """
 
     def get_input_frame_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QFrame#inputFrame {{
                 border: 1px solid {theme["border"]};
@@ -256,7 +258,7 @@ class ChatbotDialogStyle:
         """
 
     def get_message_input_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QTextEdit {{
                 border: none;
@@ -286,7 +288,7 @@ class ChatbotDialogStyle:
         """
 
     def get_send_button_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 border: none;
@@ -304,7 +306,7 @@ class ChatbotDialogStyle:
         """
 
     def get_image_preview_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLabel {{
                 background-color: {theme["background"]};
@@ -315,7 +317,7 @@ class ChatbotDialogStyle:
         """
 
     def get_button_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 border: none;
@@ -328,7 +330,7 @@ class ChatbotDialogStyle:
         """
 
     def get_model_button_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 background-color: {theme["background_secondary"]};
@@ -349,7 +351,7 @@ class ChatbotDialogStyle:
         """
 
     def get_settings_label_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLabel {{
                 background-color: transparent;
@@ -358,7 +360,7 @@ class ChatbotDialogStyle:
         """
 
     def get_help_btn_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 border: none;
@@ -371,7 +373,7 @@ class ChatbotDialogStyle:
         """
 
     def get_settings_edit_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLineEdit {{
                 border: 1px solid {theme["border"]};
@@ -392,7 +394,7 @@ class ChatbotDialogStyle:
         """
 
     def get_right_splitter_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QSplitter::handle {{
                 background-color: {theme["border"]};
@@ -400,7 +402,7 @@ class ChatbotDialogStyle:
         """
 
     def get_right_widget_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QWidget {{
                 background-color: {theme["background"]};
@@ -409,30 +411,31 @@ class ChatbotDialogStyle:
         """
 
     def get_temperature_label_style():
-        return """
+        t = get_theme()
+        return f"""
         QLabel {{
             background-color: transparent;
-            font-size: FONT_SIZE_TINY;
-            color: #727273;
+            font-size: {FONT_SIZE_TINY};
+            color: {t["text_secondary"]};
         }}
         """
 
     def get_tab_widget_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
         QTabWidget::pane {{
             border: none;
             background: transparent;
         }}
-        
+
         QTabWidget::tab-bar {{
             alignment: left;
             border-left: none;
         }}
-        
+
         QTabBar::tab {{
-            background: #f5f5f5;
-            color: #333;
+            background: {theme["surface"]};
+            color: {theme["text_secondary"]};
             padding: 8px 16px;
             border: none;
             border-left: none;
@@ -440,21 +443,21 @@ class ChatbotDialogStyle:
             min-width: 100px;
             font-weight: 500;
         }}
-        
+
         QTabBar::tab:selected {{
-            background: #ffffff;
+            background: {theme["background"]};
             border-bottom: 3px solid {theme["primary"]};
             border-left: none;
             color: {theme["primary"]};
         }}
-        
+
         QTabBar::tab:hover:!selected {{
-            background: #e0e0e0;
+            background: {theme["surface_hover"]};
         }}
         """
 
     def get_slider_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
         QSlider {{
             height: 20px;
@@ -496,7 +499,7 @@ class ChatbotDialogStyle:
     def get_spinbox_style(
         up_arrow_url: str, down_arrow_url: str, theme: Dict[str, str] = None
     ) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QSpinBox {{
                 border: 1px solid {theme["border"]};
@@ -557,7 +560,7 @@ class ChatbotDialogStyle:
         """
 
     def get_progress_dialog_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QProgressDialog {{
                 background-color: {theme["background"]};
@@ -612,7 +615,7 @@ class ChatbotDialogStyle:
         """
 
     def get_option_dialog_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QDialog {{
                 background-color: {theme["background"]};
@@ -631,15 +634,15 @@ class ChatbotDialogStyle:
                 background-color: {theme["primary"]};
             }}
             QPushButton:pressed {{
-                background-color: #3D7FE3;
+                background-color: {theme["primary"]};
             }}
             """
 
 
 class ChatMessageStyle:
     def get_bubble_style(is_user: bool, theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
-        bubble_color = "#f6f2f2" if is_user else None
+        theme = theme or get_theme()
+        bubble_color = theme["surface"] if is_user else None
         return f"""
             QWidget#messageBubble {{
                 background-color: {bubble_color};
@@ -649,24 +652,25 @@ class ChatMessageStyle:
         """
 
     def get_role_label_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLabel {{
                 background-color: transparent;
             }}
         """
 
-    def get_role_label_background_style() -> str:
+    def get_role_label_background_style(theme: Dict[str, str] = None) -> str:
+        theme = theme or get_theme()
         return f"""
             #roleLabelContainer {{
-                background-color: #D1D0D4;
+                background-color: {theme["border_light"]};
                 border-radius: 8px;
                 padding: 4px;
             }}
         """
 
     def get_button_style(theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 border: none;
@@ -675,7 +679,7 @@ class ChatMessageStyle:
         """
 
     def get_content_label_style(is_error, theme: Dict[str, str] = None) -> str:
-        theme = theme or THEME
+        theme = theme or get_theme()
         text_color = theme["error"] if is_error else theme["text"]
         return f"""
             QLabel {{
@@ -688,10 +692,10 @@ class ChatMessageStyle:
         """
 
     def get_fade_in_text_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLabel {{
-                color: rgba(0, 0, 0, 0.5);
+                color: {theme["text_secondary"]};
                 font-size: {FONT_SIZE_NORMAL};
                 background-color: transparent;
                 padding: 0px 0px;
@@ -700,10 +704,10 @@ class ChatMessageStyle:
         """
 
     def get_animation_style(alpha, theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QLabel {{
-                color: rgba(0, 0, 0, {alpha});
+                color: {theme["text"]};
                 font-size: {FONT_SIZE_NORMAL};
                 background-color: transparent;
                 padding: 0px 0px;
@@ -712,7 +716,7 @@ class ChatMessageStyle:
         """
 
     def get_edit_area_style(theme: Dict[str, str] = None):
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QTextEdit {{
                 border: 3px solid {theme["primary"]};
@@ -734,7 +738,7 @@ class ChatMessageStyle:
 
     def get_resend_button_style(theme: Dict[str, str] = None):
         """Style for edit message resend button"""
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 background-color: transparent;
@@ -752,7 +756,7 @@ class ChatMessageStyle:
 
     def get_cancel_button_style(theme: Dict[str, str] = None):
         """Style for edit message cancel button"""
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 background-color: transparent;
@@ -769,7 +773,7 @@ class ChatMessageStyle:
 
     def get_save_button_style(theme: Dict[str, str] = None):
         """Style for edit message save button"""
-        theme = theme or THEME
+        theme = theme or get_theme()
         return f"""
             QPushButton {{
                 background-color: {theme["primary"]};

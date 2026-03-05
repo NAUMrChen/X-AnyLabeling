@@ -2,9 +2,9 @@ import json
 import os
 import shutil
 
-from PyQt5 import QtWidgets
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
+from PyQt6 import QtWidgets
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -14,63 +14,17 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QProgressDialog,
 )
-from PyQt5.QtGui import QImage
+from PyQt6.QtGui import QImage
 
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.shape import Shape
 from anylabeling.views.labeling.utils.qt import new_icon_path
+from anylabeling.views.labeling.utils.style import (
+    get_dialog_style,
+    get_ok_btn_style,
+    get_spinbox_style,
+)
 from anylabeling.views.labeling.widgets.popup import Popup
-
-
-def get_ok_btn_style():
-    return """
-        QPushButton {
-            background-color: #0071e3;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 500;
-            min-width: 100px;
-            height: 36px;
-        }
-        QPushButton:hover {
-            background-color: #0077ED;
-        }
-        QPushButton:pressed {
-            background-color: #0068D0;
-        }
-    """
-
-
-def get_spinbox_style():
-    return f"""
-        QSpinBox {{
-            padding: 5px 8px;
-            background: white;
-            border: 1px solid #d2d2d7;
-            border-radius: 6px;
-            min-height: 24px;
-            selection-background-color: #0071e3;
-        }}
-        QSpinBox::up-button, QSpinBox::down-button {{
-            width: 20px;
-            border: none;
-            background: #f0f0f0;
-        }}
-        QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
-            background: #e0e0e0;
-        }}
-        QSpinBox::up-arrow {{
-            image: url({new_icon_path("caret-up", "svg")});
-            width: 12px;
-            height: 12px;
-        }}
-        QSpinBox::down-arrow {{
-            image: url({new_icon_path("caret-down", "svg")});
-            width: 12px;
-            height: 12px;
-        }}
-    """
 
 
 class ShapeModifyDialog(QDialog):
@@ -96,33 +50,7 @@ class ShapeModifyDialog(QDialog):
         self.start_index = current_index
         self.end_index = 0
 
-        self.setStyleSheet(
-            f"""
-            QDialog {{
-                background-color: #f5f5f7;
-                border-radius: 10px;
-            }}
-            QLabel {{
-                color: #1d1d1f;
-                font-size: 13px;
-            }}
-            QCheckBox {{
-                spacing: 8px;
-            }}
-            QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-                border-radius: 3px;
-                border: 1px solid #d2d2d7;
-                background-color: white;
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: white;
-                border: 1px solid #d2d2d7;
-                image: url({new_icon_path("checkmark", "svg")});
-            }}
-            """
-        )
+        self.setStyleSheet(get_dialog_style())
 
         self.init_ui()
 
@@ -299,11 +227,11 @@ class ShapeModifyDialog(QDialog):
             self,
             self.tr("Confirm Operation"),
             confirm_msg,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
 
         if self.delete_annotations_cb.isChecked():
@@ -349,7 +277,7 @@ class ShapeModifyDialog(QDialog):
 
                     item = self.parent.file_list_widget.item(i)
                     if item:
-                        item.setCheckState(Qt.Unchecked)
+                        item.setCheckState(Qt.CheckState.Unchecked)
                 except Exception as e:
                     logger.error(f"Error deleting {label_file}: {e}")
 
@@ -490,7 +418,7 @@ class ShapeModifyDialog(QDialog):
             end_idx - start_idx + 1,
             self,
         )
-        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         progress_dialog.setWindowTitle(self.tr("Removing Shapes"))
         progress_dialog.setMinimumWidth(400)
 
@@ -591,7 +519,7 @@ class ShapeModifyDialog(QDialog):
             end_idx - start_idx + 1,
             self,
         )
-        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         progress_dialog.setWindowTitle(self.tr("Adding Shapes"))
         progress_dialog.setMinimumWidth(400)
 
@@ -678,7 +606,7 @@ class ShapeModifyDialog(QDialog):
 
                 item = self.parent.file_list_widget.item(i)
                 if item:
-                    item.setCheckState(Qt.Checked)
+                    item.setCheckState(Qt.CheckState.Checked)
 
             except Exception as e:
                 logger.error(f"Error processing {label_file}: {e}")

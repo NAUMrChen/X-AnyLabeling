@@ -1,7 +1,7 @@
 import copy
 import math
 
-from PyQt5 import QtCore, QtGui
+from PyQt6 import QtCore, QtGui
 
 from . import utils
 from ..labeling.logger import logger
@@ -170,6 +170,7 @@ class Shape:
             "polygon",
             "rectangle",
             "rotation",
+            "quadrilateral",
             "point",
             "line",
             "circle",
@@ -194,6 +195,13 @@ class Shape:
         if self.shape_type == "rectangle":
             if not self.reach_max_points():
                 self.points.append(point)
+        elif self.shape_type == "quadrilateral":
+            if self.points and point == self.points[0]:
+                self.close()
+            else:
+                self.points.append(point)
+                if len(self.points) == 4:
+                    self.close()
         else:
             if self.points and point == self.points[0]:
                 self.close()
@@ -202,7 +210,11 @@ class Shape:
 
     def can_add_point(self):
         """Check if shape supports more points"""
-        return self.shape_type in ["polygon", "linestrip"]
+        if self.shape_type in ["polygon", "linestrip"]:
+            return True
+        if self.shape_type == "quadrilateral":
+            return len(self.points) < 4
+        return False
 
     def pop_point(self):
         """Remove and return the last point of the shape"""
@@ -242,14 +254,19 @@ class Shape:
             # Try using integer sizes for smoother drawing(?)
             pen.setWidth(max(1, int(round(self.line_width / self.scale))))
             if self.difficult and self.shape_type != "point":
-                pen.setStyle(QtCore.Qt.DashLine)
+                pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             painter.setPen(pen)
 
             line_path = QtGui.QPainterPath()
             vrtx_path = QtGui.QPainterPath()
 
             if self.shape_type == "rectangle":
-                assert len(self.points) in [1, 2, 4]
+                if len(self.points) not in [1, 2, 4]:
+                    logger.error(
+                        f"Invalid points count for rectangle: "
+                        f"expected 1, 2 or 4, got {len(self.points)}"
+                    )
+                    return
                 if len(self.points) == 2:
                     rectangle = self.get_rect_from_line(*self.points)
                     line_path.addRect(rectangle)
@@ -262,7 +279,12 @@ class Shape:
                     if self.is_closed() or self.label is not None:
                         line_path.lineTo(self.points[0])
             elif self.shape_type == "rotation":
-                assert len(self.points) in [1, 2, 4]
+                if len(self.points) not in [1, 2, 4]:
+                    logger.error(
+                        f"Invalid points count for rotation: "
+                        f"expected 1, 2 or 4, got {len(self.points)}"
+                    )
+                    return
                 if len(self.points) == 2:
                     rectangle = self.get_rect_from_line(*self.points)
                     line_path.addRect(rectangle)
@@ -274,8 +296,32 @@ class Shape:
                             self.draw_vertex(vrtx_path, i)
                     if self.is_closed() or self.label is not None:
                         line_path.lineTo(self.points[0])
+            elif self.shape_type == "quadrilateral":
+                if len(self.points) not in [1, 2, 3, 4]:
+                    logger.error(
+                        f"Invalid points count for quadrilateral: "
+                        f"expected 1-4, got {len(self.points)}"
+                    )
+                    return
+                if len(self.points) >= 2:
+                    line_path.moveTo(self.points[0])
+                    for i, p in enumerate(self.points):
+                        line_path.lineTo(p)
+                        if not self.selected:
+                            if i == 0:
+                                self.draw_vertex(vrtx_path, i)
+                        else:
+                            if i != 0:
+                                self.draw_vertex(vrtx_path, i)
+                    if self.is_closed() or self.label is not None:
+                        line_path.lineTo(self.points[0])
             elif self.shape_type == "circle":
-                assert len(self.points) in [1, 2]
+                if len(self.points) not in [1, 2]:
+                    logger.error(
+                        f"Invalid points count for circle: "
+                        f"expected 1 or 2, got {len(self.points)}"
+                    )
+                    return
                 if len(self.points) == 2:
                     rectangle = self.get_circle_rect_from_line(self.points)
                     line_path.addEllipse(rectangle)
@@ -288,7 +334,12 @@ class Shape:
                     line_path.lineTo(p)
                     self.draw_vertex(vrtx_path, i)
             elif self.shape_type == "point":
-                assert len(self.points) == 1
+                if len(self.points) != 1:
+                    logger.error(
+                        f"Invalid points count for point: "
+                        f"expected 1, got {len(self.points)}"
+                    )
+                    return
                 self.draw_vertex(vrtx_path, 0, True)
             else:
                 line_path.moveTo(self.points[0])
@@ -308,6 +359,26 @@ class Shape:
             painter.drawPath(vrtx_path)
             if self._vertex_fill_color is not None:
                 painter.fillPath(vrtx_path, self._vertex_fill_color)
+            # Quadrilateral selected: first vertex as outline-only (transparent, no fill)
+            if (
+                self.shape_type == "quadrilateral"
+                and len(self.points) >= 1
+                and self.selected
+            ):
+                d = self.point_size / self.scale
+                p0 = self.points[0]
+                outline_color = (
+                    self.select_line_color
+                    if self.selected
+                    else self.line_color
+                )
+                pen = QtGui.QPen(outline_color)
+                pen.setWidth(max(1, int(round(self.line_width / self.scale))))
+                painter.setPen(pen)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                painter.drawEllipse(
+                    QtCore.QPointF(p0.x(), p0.y()), d / 2.0, d / 2.0
+                )
             if self.fill:
                 color = (
                     self.select_fill_color
@@ -315,6 +386,64 @@ class Shape:
                     else self.fill_color
                 )
                 painter.fillPath(line_path, color)
+
+            if (
+                self.shape_type == "quadrilateral"
+                and len(self.points) == 4
+                and self.selected
+                and (self.is_closed() or self.label is not None)
+            ):
+                self._draw_quadrilateral_order(painter)
+
+    def _draw_quadrilateral_order(self, painter):
+        """Draw a single arrow on the first edge (0→1) to indicate vertex order."""
+        if len(self.points) != 4:
+            return
+
+        color = QtGui.QColor(0, 0, 0)
+        pen = QtGui.QPen(color)
+        pen.setWidth(max(1, int(round(self.line_width / self.scale))))
+        painter.setPen(pen)
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+        half_angle_rad = math.radians(40)
+        tip_len = max(4, 10 / self.scale)
+        arm_len = max(5, 12 / self.scale)
+
+        # Only first edge: arrow from point 0 toward point 1
+        from_pt = self.points[0]
+        to_pt = self.points[1]
+        dx = to_pt.x() - from_pt.x()
+        dy = to_pt.y() - from_pt.y()
+        dist = math.sqrt(dx * dx + dy * dy)
+        if dist < 1e-6:
+            return
+        ux, uy = dx / dist, dy / dist
+        angle_rad = math.atan2(dy, dx)
+        mx = (from_pt.x() + to_pt.x()) / 2
+        my = (from_pt.y() + to_pt.y()) / 2
+        tip_x = mx + ux * tip_len
+        tip_y = my + uy * tip_len
+        back1_x = tip_x + arm_len * math.cos(
+            angle_rad + math.pi - half_angle_rad
+        )
+        back1_y = tip_y + arm_len * math.sin(
+            angle_rad + math.pi - half_angle_rad
+        )
+        back2_x = tip_x + arm_len * math.cos(
+            angle_rad + math.pi + half_angle_rad
+        )
+        back2_y = tip_y + arm_len * math.sin(
+            angle_rad + math.pi + half_angle_rad
+        )
+        painter.drawLine(
+            QtCore.QPointF(tip_x, tip_y),
+            QtCore.QPointF(back1_x, back1_y),
+        )
+        painter.drawLine(
+            QtCore.QPointF(tip_x, tip_y),
+            QtCore.QPointF(back2_x, back2_y),
+        )
 
     def draw_vertex(self, path, i, show_difficult=False):
         """Draw a vertex"""
@@ -388,7 +517,7 @@ class Shape:
         """Computes parameters to draw with `QPainterPath::addEllipse`"""
         if len(line) != 2:
             return None
-        (c, _) = line
+        c, _ = line
         r = line[0] - line[1]
         d = math.sqrt(math.pow(r.x(), 2) + math.pow(r.y(), 2))
         rectangle = QtCore.QRectF(c.x() - d, c.y() - d, 2 * d, 2 * d)

@@ -4,8 +4,8 @@ import numpy as np
 from typing import Union, Tuple, List
 from argparse import Namespace
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import QCoreApplication
+from PyQt6 import QtCore
+from PyQt6.QtCore import QCoreApplication
 
 from anylabeling.app_info import __preferred_device__
 from anylabeling.views.labeling.shape import Shape
@@ -45,6 +45,7 @@ class YOLO(Model):
             "input_iou",
             "edit_iou",
             "toggle_preserve_existing_annotations",
+            "button_classes_filter",
             "button_reset_tracker",
             "button_roi_auto_label",
         ]
@@ -285,6 +286,21 @@ class YOLO(Model):
         if self.tracker is not None:
             self.tracker.reset()
 
+    def set_auto_labeling_filter_classes(self, class_names: List[str]) -> None:
+        """
+        Updates the active class filter from a list of class names.
+
+        Args:
+            class_names (List[str]): Selected class names. An empty list
+                or a selection of all classes disables the filter (None).
+        """
+        if not class_names or len(class_names) == len(self.classes):
+            self.filter_classes = None
+        else:
+            self.filter_classes = [
+                i for i, c in enumerate(self.classes) if c in class_names
+            ]
+
     def inference(self, blob):
         if self.engine == "dnn" and self.task in ["det", "seg", "track"]:
             outputs = self.net.get_dnn_inference(blob=blob, extract=False)
@@ -513,15 +529,15 @@ class YOLO(Model):
                     pred_kpts.shape[0], *self.kpt_shape
                 )
             bbox = pred[:, :4]
-            conf = pred[:, 4:5]
-            clas = pred[:, 5:6]
+            conf = pred[:, 4]
+            clas = pred[:, 5]
             keypoints = scale_coords(
                 self.input_shape, pred_kpts, self.image_shape
             )
         else:
             bbox = pred[:, :4]
-            conf = pred[:, 4:5]
-            clas = pred[:, 5:6]
+            conf = pred[:, 4]
+            clas = pred[:, 5]
         return (bbox, clas, conf, masks, keypoints)
 
     def predict_shapes(self, image, image_path=None, roi=None, templates=None):
@@ -808,13 +824,11 @@ class YOLO(Model):
             if len(tracks) > 0:
                 boxes = tracks[:, :5] if self.task == "obb" else tracks[:, :4]
                 track_ids = (
-                    tracks[:, 5:6] if self.task == "obb" else tracks[:, 4:5]
+                    tracks[:, 5] if self.task == "obb" else tracks[:, 4]
                 )
-                scores = (
-                    tracks[:, 6:7] if self.task == "obb" else tracks[:, 5:6]
-                )
+                scores = tracks[:, 6] if self.task == "obb" else tracks[:, 5]
                 class_ids = (
-                    tracks[:, 7:8] if self.task == "obb" else tracks[:, 6:7]
+                    tracks[:, 7] if self.task == "obb" else tracks[:, 6]
                 )
 
         shapes = []

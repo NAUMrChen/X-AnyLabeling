@@ -1,6 +1,7 @@
 import os
 
-from PyQt5.QtWidgets import (
+from anylabeling.views.labeling.utils.theme import get_theme
+from PyQt6.QtWidgets import (
     QWidget,
     QLabel,
     QHBoxLayout,
@@ -9,8 +10,8 @@ from PyQt5.QtWidgets import (
     QApplication,
     QSizePolicy,
 )
-from PyQt5.QtCore import Qt, QTimer, QRectF, QSize
-from PyQt5.QtGui import QPainter, QPainterPath, QColor, QIcon
+from PyQt6.QtCore import Qt, QTimer, QRectF, QSize
+from PyQt6.QtGui import QPainter, QPainterPath, QColor, QIcon
 
 
 def is_wsl():
@@ -25,17 +26,24 @@ def is_wsl():
 class Popup(QWidget):
     def __init__(self, text, parent=None, msec=3000, icon=None):
         super().__init__(
-            parent, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+            parent,
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
         )
 
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #f2edec;
+        t = get_theme()
+        self._bg_color = t["surface_hover"]
+        self._text_color = t["text"]
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self._bg_color};
                 border-radius: 16px;
-            }
-        """
-        )
+            }}
+            QLabel {{
+                background-color: transparent;
+                color: {self._text_color};
+            }}
+        """)
 
         # Use horizontal layout to place icon and text side by side
         hbox = QHBoxLayout()
@@ -46,13 +54,17 @@ class Popup(QWidget):
         if icon:
             self.icon_label = QLabel()
             self.icon_label.setPixmap(QIcon(icon).pixmap(QSize(16, 16)))
-            self.icon_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            self.icon_label.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
             hbox.addWidget(self.icon_label)
             hbox.addSpacing(1)  # Space between icon and text
 
         # Add text label
         self.label = QLabel(text)
-        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
         hbox.addWidget(self.label)
 
         # Main layout
@@ -62,8 +74,11 @@ class Popup(QWidget):
         self.setLayout(layout)
 
         # Set window properties
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
 
         # Add drop shadow effect
         self.shadow = QGraphicsDropShadowEffect(self)
@@ -80,13 +95,13 @@ class Popup(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         path = QPainterPath()
         rect = QRectF(self.rect())
         path.addRoundedRect(rect, 10, 10)
 
-        painter.fillPath(path, QColor("#f2edec"))
+        painter.fillPath(path, QColor(self._bg_color))
 
     def show_popup(
         self, parent_widget, copy_msg="", popup_height=36, position="default"

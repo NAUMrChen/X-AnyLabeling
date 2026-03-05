@@ -1,6 +1,6 @@
 import threading
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog,
     QLabel,
     QHBoxLayout,
@@ -8,13 +8,19 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QSizePolicy,
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
+from PyQt6.QtGui import QIcon
 
 try:
-    from PyQt5.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+    _WEBENGINE_AVAILABLE = True
 except ImportError:
-    QWebEngineView = None
+    _WEBENGINE_AVAILABLE = False
+
+    class QWebEngineView:
+        pass
+
 
 from anylabeling.app_info import (
     __appname__,
@@ -29,6 +35,7 @@ from anylabeling.views.labeling.utils.qt import new_icon, new_icon_path
 from anylabeling.views.labeling.utils.update_checker import (
     check_for_updates_sync,
 )
+from anylabeling.views.labeling.utils.theme import get_theme
 from anylabeling.views.labeling.widgets.popup import Popup
 from anylabeling.views.labeling.chatbot.render import convert_markdown_to_html
 
@@ -37,6 +44,8 @@ class AboutDialog(QDialog):
     update_available = pyqtSignal(dict)
     no_update = pyqtSignal()
     error = pyqtSignal(str)
+    _copy_info_ready = pyqtSignal(str)
+    _bg_update_ready = pyqtSignal(dict)
 
     email_address = "cv_hub@163.com"
     website_url = "https://github.com/CVHub520/X-AnyLabeling"
@@ -56,50 +65,54 @@ class AboutDialog(QDialog):
 
         self._cached_update_info = None
 
+        # Thread-safe signal connections
+        self._copy_info_ready.connect(self._show_copy_popup)
+        self._bg_update_ready.connect(self.show_update_dialog)
+
         self.setWindowTitle(" ")
         self.setFixedSize(350, 250)
 
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: #FFFFFF;
+        t = get_theme()
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {t["background"]};
                 border-radius: 10px;
-            }
-            QLabel {
-                color: #1d1d1f;
-            }
-            QPushButton {
+            }}
+            QLabel {{
+                color: {t["text"]};
+                background-color: transparent;
+            }}
+            QPushButton {{
                 border: none;
                 background: transparent;
-                color: #0066FF;
+                color: {t["primary"]};
                 text-align: center;
                 padding: 4px;
-            }
-            QPushButton:hover {
-                background-color: #F0F0F0;
+            }}
+            QPushButton:hover {{
+                background-color: {t["surface_hover"]};
                 border-radius: 4px;
-            }
-            QPushButton#link-btn {
-                color: #0066FF;
-            }
-            QPushButton#social-btn {
+            }}
+            QPushButton#link-btn {{
+                color: {t["primary"]};
+            }}
+            QPushButton#social-btn {{
                 padding: 8px;
-            }
-            QPushButton#social-btn:hover {
-                background-color: #F0F0F0;
+            }}
+            QPushButton#social-btn:hover {{
+                background-color: {t["surface_hover"]};
                 border-radius: 4px;
-            }
-            QPushButton#close-btn {
-                color: #86868b;
+            }}
+            QPushButton#close-btn {{
+                color: {t["text_secondary"]};
                 font-size: 16px;
                 padding: 8px;
-            }
-            QPushButton#close-btn:hover {
-                background-color: #F0F0F0;
+            }}
+            QPushButton#close-btn:hover {{
+                background-color: {t["surface_hover"]};
                 border-radius: 4px;
-            }
-        """
-        )
+            }}
+        """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -108,13 +121,13 @@ class AboutDialog(QDialog):
         # App name and version
         title_label = QLabel(f"<b>X-AnyLabeling</b> v{__version__}")
         title_label.setStyleSheet("font-size: 16px;")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
 
         # Links row - centered
         links_layout = QHBoxLayout()
         links_layout.setSpacing(8)
-        links_layout.setAlignment(Qt.AlignCenter)
+        links_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         website_btn = QPushButton(self.tr("Website"))
         website_btn.setObjectName("link-btn")
@@ -138,7 +151,7 @@ class AboutDialog(QDialog):
         # Social links - centered
         social_layout = QHBoxLayout()
         social_layout.setSpacing(4)
-        social_layout.setAlignment(Qt.AlignCenter)
+        social_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Email
         email_btn = QPushButton()
@@ -180,7 +193,7 @@ class AboutDialog(QDialog):
         # Changelog and update - centered
         update_layout = QHBoxLayout()
         update_layout.setSpacing(8)
-        update_layout.setAlignment(Qt.AlignCenter)
+        update_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         changelog_btn = QPushButton(self.tr("Changelog"))
         changelog_btn.setObjectName("link-btn")
@@ -202,8 +215,10 @@ class AboutDialog(QDialog):
         copyright_label = QLabel(
             "Copyright © 2023 CVHub. All rights reserved."
         )
-        copyright_label.setStyleSheet("color: #86868b; font-size: 12px;")
-        copyright_label.setAlignment(Qt.AlignCenter)
+        copyright_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 12px;"
+        )
+        copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(copyright_label)
 
         self.move_to_center()
@@ -218,21 +233,36 @@ class AboutDialog(QDialog):
         self.move(qr.topLeft())
 
     def copy_app_info(self):
-        """Copy app info to clipboard"""
-        app_info = (
-            f"App name: {__appname__}\n"
-            f"App version: {__version__}\n"
-            f"Device: {__preferred_device__}\n"
-        )
-        system_info, pkg_info = collect_system_info()
-        system_info_str = "\n".join(
-            [f"{key}: {value}" for key, value in system_info.items()]
-        )
-        pkg_info_str = "\n".join(
-            [f"{key}: {value}" for key, value in pkg_info.items()]
-        )
-        msg = f"{app_info}\n{system_info_str}\n\n{pkg_info_str}"
+        """Copy app info to clipboard (non-blocking)"""
 
+        def _collect_and_copy():
+            try:
+                app_info = (
+                    f"App name: {__appname__}\n"
+                    f"App version: {__version__}\n"
+                    f"Device: {__preferred_device__}\n"
+                )
+                system_info, pkg_info = collect_system_info()
+                system_info_str = "\n".join(
+                    [f"{key}: {value}" for key, value in system_info.items()]
+                )
+                pkg_info_str = "\n".join(
+                    [f"{key}: {value}" for key, value in pkg_info.items()]
+                )
+                msg = f"{app_info}\n{system_info_str}\n\n{pkg_info_str}"
+            except Exception:
+                msg = (
+                    f"App name: {__appname__}\n"
+                    f"App version: {__version__}\n"
+                    f"Device: {__preferred_device__}\n"
+                )
+            self._copy_info_ready.emit(msg)
+
+        thread = threading.Thread(target=_collect_and_copy, daemon=True)
+        thread.start()
+
+    def _show_copy_popup(self, msg):
+        """Show copy-to-clipboard popup on the main thread"""
         popup = Popup(
             self.tr("Copied!"),
             self.parent,
@@ -282,9 +312,7 @@ class AboutDialog(QDialog):
             update_info = check_for_updates_sync(timeout=5)
             if update_info and update_info["has_update"]:
                 self._cached_update_info = update_info
-                QTimer.singleShot(
-                    0, lambda: self.show_update_dialog(update_info)
-                )
+                self._bg_update_ready.emit(update_info)
 
         thread = threading.Thread(target=update_check_thread, daemon=True)
         thread.start()
@@ -303,26 +331,32 @@ class AboutDialog(QDialog):
             version=update_info["latest_version"]
         )
         title_label = QLabel(display_text)
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _t = get_theme()
         title_label.setStyleSheet(
-            """
-            font-size: 16px;
-            font-weight: bold;
-            color: #0066FF;
-            margin: 15px 0;
-            padding: 10px;
-        """
+            f"font-size: 16px; font-weight: bold; color: {_t['primary']};"
+            " margin: 15px 0; padding: 10px;"
         )
         layout.addWidget(title_label)
 
-        web_view = QWebEngineView()
-        web_view.setMinimumHeight(350)
-        web_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        web_view.setHtml(
-            convert_markdown_to_html(update_info["release_notes"])
-        )
-
-        layout.addWidget(web_view)
+        if _WEBENGINE_AVAILABLE:
+            web_view = QWebEngineView()
+            web_view.setMinimumHeight(350)
+            web_view.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            web_view.setHtml(
+                convert_markdown_to_html(update_info["release_notes"])
+            )
+            layout.addWidget(web_view)
+        else:
+            notes_label = QLabel(update_info.get("release_notes", ""))
+            notes_label.setWordWrap(True)
+            notes_label.setMinimumHeight(350)
+            notes_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            layout.addWidget(notes_label)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -340,7 +374,7 @@ class AboutDialog(QDialog):
         button_layout.addWidget(ok_btn)
         layout.addLayout(button_layout)
 
-        dialog.exec_()
+        dialog.exec()
 
     def _handle_update_ok(self, dialog, url):
         """Handle OK button click in update dialog"""

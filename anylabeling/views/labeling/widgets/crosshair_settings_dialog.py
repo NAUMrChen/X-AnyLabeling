@@ -1,6 +1,11 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore
 
 from anylabeling.views.labeling.utils.qt import new_icon_path
+from anylabeling.views.labeling.utils.style import (
+    get_dialog_style,
+    get_ok_btn_style,
+    get_cancel_btn_style,
+)
 
 
 class CrosshairSettingsDialog(QtWidgets.QDialog):
@@ -16,97 +21,13 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
 
         self.setWindowTitle(self.tr("Crosshair Settings"))
         self.setModal(True)
-        self.setFixedSize(380, 280)
+        self.setFixedSize(460, 320)
         self.setWindowFlags(
-            self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint
+            self.windowFlags()
+            & ~QtCore.Qt.WindowType.WindowContextHelpButtonHint
         )
 
-        # Apply macOS style
-        self.setStyleSheet(
-            f"""
-                QDialog {{
-                    background-color: #f5f5f7;
-                    border-radius: 10px;
-                }}
-                QLabel {{
-                    color: #1d1d1f;
-                    font-size: 13px;
-                }}
-                QCheckBox {{
-                    spacing: 8px;
-                }}
-                QCheckBox::indicator {{
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 3px;
-                    border: 1px solid #d2d2d7;
-                    background-color: white;
-                }}
-                QCheckBox::indicator:checked {{
-                    background-color: white;
-                    border: 1px solid #d2d2d7;
-                    image: url({new_icon_path("checkmark", "svg")});
-                }}
-                QSlider {{
-                    height: 28px;
-                }}
-                QSlider::groove:horizontal {{
-                    height: 4px;
-                    background: #d2d2d7;
-                    border-radius: 2px;
-                }}
-                QSlider::handle:horizontal {{
-                    background: #0071e3;
-                    border: none;
-                    width: 16px;
-                    height: 16px;
-                    margin: -6px 0;
-                    border-radius: 8px;
-                }}
-                QSlider::sub-page:horizontal {{
-                    background: #0071e3;
-                    border-radius: 2px;
-                }}
-                QDoubleSpinBox {{
-                    padding: 5px 8px;
-                    background: white;
-                    border: 1px solid #d2d2d7;
-                    border-radius: 6px;
-                    min-height: 24px;
-                    selection-background-color: #0071e3;
-                }}
-                QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-                    width: 20px;
-                    border: none;
-                    background: #f0f0f0;
-                }}
-
-                QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
-                    background: #e0e0e0;
-                }}
-
-                QDoubleSpinBox::up-arrow {{
-                    image: url({new_icon_path("caret-up", "svg")});
-                    width: 12px;
-                    height: 12px;
-                }}
-
-                QDoubleSpinBox::down-arrow {{
-                    image: url({new_icon_path("caret-down", "svg")});
-                    width: 12px;
-                    height: 12px;
-                }}
-
-                QLineEdit {{
-                    padding: 5px 8px;
-                    background: white;
-                    border: 1px solid #d2d2d7;
-                    border-radius: 6px;
-                    min-height: 24px;
-                    selection-background-color: #0071e3;
-                }}
-        """
-        )
+        self.setStyleSheet(get_dialog_style())
 
         # Create layout with proper spacing
         layout = QtWidgets.QVBoxLayout()
@@ -130,7 +51,7 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.width_label.setMinimumWidth(100)
         width_layout.addWidget(self.width_label)
 
-        self.width_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.width_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.width_slider.setMinimum(10)
         self.width_slider.setMaximum(100)
         self.width_slider.setValue(int(self._width * 10))
@@ -142,7 +63,7 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.width_spinbox.setSingleStep(0.1)
         self.width_spinbox.setValue(self._width)
         self.width_spinbox.setFixedWidth(68)
-        self.width_spinbox.setAlignment(QtCore.Qt.AlignRight)
+        self.width_spinbox.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         width_layout.addWidget(self.width_spinbox)
 
         # Line opacity controls
@@ -152,7 +73,9 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.opacity_label.setMinimumWidth(100)
         opacity_layout.addWidget(self.opacity_label)
 
-        self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.opacity_slider = QtWidgets.QSlider(
+            QtCore.Qt.Orientation.Horizontal
+        )
         self.opacity_slider.setMinimum(0)
         self.opacity_slider.setMaximum(100)
         self.opacity_slider.setValue(int(self._opacity * 100))
@@ -164,7 +87,7 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.opacity_spinbox.setSingleStep(0.01)
         self.opacity_spinbox.setValue(self._opacity)
         self.opacity_spinbox.setFixedWidth(68)
-        self.opacity_spinbox.setAlignment(QtCore.Qt.AlignRight)
+        self.opacity_spinbox.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         opacity_layout.addWidget(self.opacity_spinbox)
 
         # Color controls
@@ -177,37 +100,9 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.color_lineedit = QtWidgets.QLineEdit()
         self.color_lineedit.setText(self._color)
         self.color_lineedit.setFixedSize(100, 32)
-        self.color_lineedit.setStyleSheet(
-            """
-            QLineEdit {
-                padding: 0px 8px;
-                background-color: white;
-                color: #1d1d1f;
-                border: 1px solid #d2d2d7;
-                border-radius: 6px;
-            }
-        """
-        )
-
         self.color_button = QtWidgets.QPushButton(self.tr("Choose Color"))
         self.color_button.clicked.connect(self.choose_color)
-        self.color_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #f5f5f7;
-                color: #1d1d1f;
-                border: 1px solid #d2d2d7;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #e5e5e5;
-            }
-            QPushButton:pressed {
-                background-color: #d5d5d5;
-            }
-        """
-        )
-        self.color_button.setFixedSize(100, 32)
+        self.color_button.setStyleSheet(get_cancel_btn_style())
 
         color_layout.addWidget(self.color_label)
         color_layout.addStretch()
@@ -216,70 +111,19 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
 
         # Button layout
         button_layout = QtWidgets.QHBoxLayout()
-        button_layout.setSpacing(8)
+        button_layout.setSpacing(12)
 
         self.reset_button = QtWidgets.QPushButton(self.tr("Reset"))
-        self.reset_button.setFixedSize(100, 32)
         self.reset_button.clicked.connect(self.reset_settings)
-        self.reset_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #f5f5f7;
-                color: #1d1d1f;
-                border: 1px solid #d2d2d7;
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #e5e5e5;
-            }
-            QPushButton:pressed {
-                background-color: #d5d5d5;
-            }
-        """
-        )
+        self.reset_button.setStyleSheet(get_cancel_btn_style())
 
         ok_button = QtWidgets.QPushButton(self.tr("OK"))
-        ok_button.setFixedSize(100, 32)
         ok_button.clicked.connect(self.accept)
-        ok_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #0071e3;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #0077ED;
-            }
-            QPushButton:pressed {
-                background-color: #0068D0;
-            }
-        """
-        )
+        ok_button.setStyleSheet(get_ok_btn_style())
 
         cancel_button = QtWidgets.QPushButton(self.tr("Cancel"))
-        cancel_button.setFixedSize(100, 32)
         cancel_button.clicked.connect(self.reject)
-        cancel_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #f5f5f7;
-                color: #1d1d1f;
-                border: 1px solid #d2d2d7;
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #e5e5e5;
-            }
-            QPushButton:pressed {
-                background-color: #d5d5d5;
-            }
-        """
-        )
+        cancel_button.setStyleSheet(get_cancel_btn_style())
 
         button_layout.addWidget(self.reset_button)
         button_layout.addStretch()
@@ -307,7 +151,7 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
     def move_to_center(self):
         """Move dialog to center of the screen"""
         qr = self.frameGeometry()
-        cp = QtWidgets.QDesktopWidget().availableGeometry().center()
+        cp = self.screen().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
